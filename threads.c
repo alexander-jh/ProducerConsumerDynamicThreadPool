@@ -10,7 +10,9 @@ void *reader(void *arg) {
 		exit(EXIT_FAILURE);
 	}
 	transform_t *t = task_create();
-	while(fscanf(fp, "%c %hu", &cmd, &key)) {
+    // Using STDIN for file input
+    while(scanf("%c %hu", &cmd, &key)) {
+	//while(fscanf(fp, "%c %hu", &cmd, &key)) {
 		set_cmd(t, cmd);
 		set_key(t, key);
 		set_seq_num(t, ++writer_pos);
@@ -100,6 +102,9 @@ void *writer(void *arg) {
 	transform_t *t;
     while(true) {
         t = (transform_t *) atomic_queue_remove(output_queue, false);
-        if(t == NULL && consumer_done) pthread_exit(0);
+        if(t == NULL && consumer_done)
+            pthread_exit(0);
+        else if(t != NULL)
+            printf("%hu", get_decoded_key(t));
     }
 }
