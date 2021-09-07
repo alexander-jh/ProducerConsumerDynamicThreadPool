@@ -33,6 +33,4 @@ void *_atomic_queue_remove(atomic_queue_t *q, bool is_wq);
 
 void *_atomic_queue_try_remove(atomic_queue_t *q, bool is_wq);
 
-void *_atomic_queue_time_remove(atomic_queue_t *q, bool is_wq, uint32_t ms);
-
 #endif //PROJECT1_ATOMIC_QUEUE_H

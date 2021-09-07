@@ -26,7 +26,12 @@ void *producer(void *arg) {
 	double retval;
 	while(!producer_done) {
 		task = (transform_t *) _atomic_queue_try_remove(input_queue, false);
-		if(task == NULL && reader_done) break;
+
+        if(task == NULL && reader_done)
+            break;
+        else if(task == NULL)
+            continue;
+
 		switch(get_cmd(task)) {
 			case 'A':
 				out_val = transformA1(get_key(task), &retval);
@@ -59,7 +64,12 @@ void *consumer(void *arg) {
 	double retval;
 	while(!consumer_done) {
 		task = (transform_t *) _atomic_queue_try_remove(work_queue, true);
-		if(task == NULL && producer_done) break;
+
+        if(task == NULL && producer_done)
+            break;
+        else if(task == NULL)
+            continue;
+
 		switch(get_cmd(task)) {
 			case 'A':
 				out_val = transformA2(get_encoded_key(task), &retval);
@@ -88,9 +98,8 @@ void *consumer(void *arg) {
 
 void *writer(void *arg) {
 	transform_t *t;
-	while((t = (transform_t *) atomic_queue_remove(output_queue, false))) {
-		printf("%hu\n", get_decoded_key(t));
-		task_destroy(t);
-	}
-	pthread_exit(0);
+    while(true) {
+        t = (transform_t *) atomic_queue_remove(output_queue, false);
+        if(t == NULL && consumer_done) pthread_exit(0);
+    }
 }

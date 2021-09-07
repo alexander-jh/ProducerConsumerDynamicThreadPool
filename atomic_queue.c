@@ -68,20 +68,3 @@ void *_atomic_queue_try_remove(atomic_queue_t *q, bool is_wq) {
 	       _atomic_queue_remove(q, is_wq) :
 		   NULL;
 }
-
-void *_atomic_queue_time_remove(atomic_queue_t *q, bool is_wq, uint32_t ms) {
-	uint32_t s = ms / 1000;
-	uint32_t ns = (ms % 1000) * 1000000;
-	struct timespec ts;
-	clock_gettime(CLOCK_REALTIME, &ts);
-	ts.tv_sec += s;
-	ts.tv_nsec += ns;
-	int hold;
-	do {
-		hold = sem_timedwait(&q->front_sem, &ts);
-	} while(hold == -1 && errno == EINTR);
-	assert(hold != -1 || errno == ETIMEDOUT);
-	return hold == -1 ?
-			NULL :
-		   _atomic_queue_remove(q, is_wq);
-}
