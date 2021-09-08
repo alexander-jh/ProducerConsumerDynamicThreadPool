@@ -2,9 +2,6 @@
  * Blocking queue to handle mutual exclusion for buffer. Is abstracted
  * to handle all three major queue types.
  */
-
-#ifndef PROJECT1_ATOMIC_QUEUE_H
-
 #include <assert.h>
 #include <time.h>
 #include <errno.h>
@@ -17,11 +14,9 @@
 
 #include "transform.h"
 
-#define PROJECT1_ATOMIC_QUEUE_H
-
 typedef struct atomic_queue_struct atomic_queue_t;
 
-atomic_queue_t *atomic_queue_create(uint16_t size, size_t task);
+atomic_queue_t *atomic_queue_create(uint16_t size);
 
 void atomic_queue_destroy(atomic_queue_t *q);
 
@@ -32,5 +27,3 @@ void *atomic_queue_remove(atomic_queue_t *q, bool is_wq);
 void *_atomic_queue_remove(atomic_queue_t *q, bool is_wq);
 
 void *_atomic_queue_try_remove(atomic_queue_t *q, bool is_wq);
-
-#endif //PROJECT1_ATOMIC_QUEUE_H

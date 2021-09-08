@@ -2,6 +2,8 @@
  * Generated header file for linking transformMat.o functions.
  */
 
+#include <stdint.h>
+
 uint16_t transformA1(uint16_t input_val, double *retval);
 uint16_t transformA2(uint16_t input_val, double *retval);
 uint16_t transformB1(uint16_t input_val, double *retval);

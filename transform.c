@@ -52,6 +52,6 @@ uint16_t get_encoded_key(transform_t *t) { return t->encoded_key; }
 
 uint16_t get_decoded_key(transform_t *t) { return t->decoded_key; }
 
-double get_encoded_ret(transform_t *t, double encoded_ret) { return t->encoded_ret; }
+double get_encoded_ret(transform_t *t) { return t->encoded_ret; }
 
-double get_decoded_ret(transform_t *t, double decoded_ret) { return t->decoded_ret; }
+double get_decoded_ret(transform_t *t) { return t->decoded_ret; }

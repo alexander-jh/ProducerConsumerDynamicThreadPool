@@ -1,25 +1,19 @@
 #include "threads.h"
 
 void *reader(void *arg) {
-	FILE *fp;
 	char cmd;
 	uint16_t key;
-	fp = fopen((const char *) arg, "r");
-	if(!fp) {
-		perror("Error: Failed to open input file.\n");
-		exit(EXIT_FAILURE);
-	}
 	transform_t *t = task_create();
-    // Using STDIN for file input
-    while(scanf("%c %hu", &cmd, &key)) {
-	//while(fscanf(fp, "%c %hu", &cmd, &key)) {
+    /* Using STDIN for file input */
+    while(fscanf(stdin, "%c %hu", &cmd, &key)) {
+		if(cmd == 'X') break;
 		set_cmd(t, cmd);
 		set_key(t, key);
 		set_seq_num(t, ++writer_pos);
 		atomic_queue_add(input_queue, t);
 		t = task_create();
 	}
-	pthread_exit(0);
+	pthread_exit(arg);
 }
 
 void *producer(void *arg) {
@@ -27,7 +21,7 @@ void *producer(void *arg) {
 	uint16_t out_val;
 	double retval;
 	while(!producer_done) {
-		task = (transform_t *) _atomic_queue_try_remove(input_queue, false);
+		task = (transform_t *) atomic_queue_remove(input_queue, false);
 
         if(task == NULL && reader_done)
             break;
@@ -57,7 +51,7 @@ void *producer(void *arg) {
 		set_encoded_ret(task, retval);
 		atomic_queue_add(work_queue, task);
 	}
-	pthread_exit(0);
+	pthread_exit(arg);
 }
 
 void *consumer(void *arg) {
@@ -65,7 +59,7 @@ void *consumer(void *arg) {
 	uint16_t out_val;
 	double retval;
 	while(!consumer_done) {
-		task = (transform_t *) _atomic_queue_try_remove(work_queue, true);
+		task = (transform_t *) atomic_queue_remove(work_queue, true);
 
         if(task == NULL && producer_done)
             break;
@@ -95,7 +89,7 @@ void *consumer(void *arg) {
 		set_decoded_ret(task, retval);
 		atomic_queue_add(output_queue, task);
 	}
-	pthread_exit(0);
+	pthread_exit(arg);
 }
 
 void *writer(void *arg) {
@@ -103,7 +97,7 @@ void *writer(void *arg) {
     while(true) {
         t = (transform_t *) atomic_queue_remove(output_queue, false);
         if(t == NULL && consumer_done)
-            pthread_exit(0);
+            pthread_exit(arg);
         else if(t != NULL)
             printf("%hu", get_decoded_key(t));
     }

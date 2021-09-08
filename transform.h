@@ -1,14 +1,10 @@
-#ifndef PROJECT1_TASK_H
-
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 
-#define PROJECT1_TASK_H
-
 typedef struct transform_struct transform_t;
 
-transform_t *task_create();
+transform_t *task_create(void);
 
 void task_destroy(transform_t *t);
 
@@ -40,8 +36,6 @@ uint16_t get_encoded_key(transform_t *t);
 
 uint16_t get_decoded_key(transform_t *t);
 
-double get_encoded_ret(transform_t *t, double encoded_ret);
+double get_encoded_ret(transform_t *t);
 
-double get_decoded_ret(transform_t *t, double decoded_ret);
-
-#endif //PROJECT1_TASK_H
+double get_decoded_ret(transform_t *t);
