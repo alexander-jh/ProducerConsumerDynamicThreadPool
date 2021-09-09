@@ -11,12 +11,14 @@ atomic_queue_t  *input_queue;
 atomic_queue_t	*work_queue;
 atomic_queue_t	*output_queue;
 
-bool            reader_done;
-bool			producer_done;
-bool			consumer_done;
+atomic_int      reader_done;
+atomic_int  	producer_done;
+atomic_int		consumer_done;
 
-uint16_t        writer_pos;
+atomic_int      writer_pos;
+atomic_int      consumer_threads;
 
+atomic_int      pthread_done[CONSUMER_THREAD_MAX];
 
 /*
  * Entry function for main program.
@@ -26,7 +28,8 @@ int main(void) {
 	uint16_t i;
 	pthread_t   reader_thread,
 				writer_thread,
-				consumer_thread[CONSUMER_THREAD_MAX],
+				monitor_thread,
+                //consumer_threads[CONSUMER_THREAD_MAX],
 				producer_threads[PRODUCER_THREADS];
 	/* Instantiate queues and other variables. */
 	make_queues();
@@ -39,33 +42,29 @@ int main(void) {
 	for(i = 0; i < PRODUCER_THREADS; ++i)
 		pthread_create(&producer_threads[i], NULL, producer, NULL);
 
-    /* Create consumer threads. */
-	for(i = 0; i < CONSUMER_THREAD_MAX; ++i)
-		pthread_create(&consumer_thread[i], NULL, consumer, NULL);
+    /* Create monitor threads. */
+    pthread_create(&monitor_thread, NULL, monitor, NULL);
 
-    /* Create reader thread. */
+    /* Create writer thread. */
 	pthread_create(&writer_thread, NULL, writer, NULL);
 
     /* Join on completion of reader thread. */
 	pthread_join(reader_thread, NULL);
-	/* TODO: Add locking mechanism to reader_done. */
-    reader_done = true;
+    reader_done = 1;
 
     /* Join on completion of producer threads. */
 	for(i = 0; i < PRODUCER_THREADS; ++i)
 		pthread_join(producer_threads[i], NULL);
-    /* TODO: Add locking mechanism to producer_done. */
-	producer_done = true;
+	producer_done = 1;
 
-    /* Join on completion of consumer threads. */
-    /* TODO: Dynamically scale consumer thread pool. */
-	for(i = 0; i < CONSUMER_THREAD_MAX; ++i)
-		pthread_join(consumer_thread[i], NULL);
-    /* TODO: Add locking mechanism for consumer_done. */
-	consumer_done = true;
+    /* Join on completion of consumer monitor thread. */
+    pthread_join(monitor_thread, NULL);
+	consumer_done = 1;
 
     /* Join on completion of writer threads. */
 	pthread_join(writer_thread, NULL);
+
+    destroy_queues();
 
 	return 0;
 }
@@ -76,9 +75,19 @@ void make_queues() {
 	output_queue    = atomic_queue_create(OUTPUT_BUFFER_MAX);
 }
 
+void destroy_queues() {
+    atomic_queue_destroy(input_queue);
+    atomic_queue_destroy(work_queue);
+    atomic_queue_destroy(output_queue);
+}
+
 void set_booleans() {
-	writer_pos      = 0;
-	reader_done     = false;
-	producer_done   = false;
-	consumer_done   = false;
+	uint16_t i;
+    writer_pos      = 0;
+	reader_done     = 0;
+	producer_done   = 0;
+	consumer_done   = 0;
+	consumer_threads = 0;
+    for(i = 0; i < CONSUMER_THREAD_MAX; ++i)
+        pthread_done[i] = 0;
 }

@@ -10,7 +10,7 @@ struct atomic_queue_struct {
 	pthread_mutex_t lock;
 	sem_t front_sem, open_sem;
 	uint16_t max;
-    uint16_t size;
+    atomic_int size;
 	void **data;
 };
 
@@ -72,3 +72,5 @@ void *_atomic_queue_try_remove(atomic_queue_t *q, bool is_wq) {
 	       _atomic_queue_remove(q, is_wq) :
 		   NULL;
 }
+
+int atomic_queue_size(atomic_queue_t *q) { return q->size; }

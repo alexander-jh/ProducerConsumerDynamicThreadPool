@@ -11,6 +11,7 @@
 #include <semaphore.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 
 #include "transform.h"
 
@@ -27,3 +28,5 @@ void *atomic_queue_remove(atomic_queue_t *q, bool is_wq);
 void *_atomic_queue_remove(atomic_queue_t *q, bool is_wq);
 
 void *_atomic_queue_try_remove(atomic_queue_t *q, bool is_wq);
+
+int atomic_queue_size(atomic_queue_t *q);
