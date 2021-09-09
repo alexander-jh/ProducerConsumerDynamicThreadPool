@@ -59,7 +59,6 @@ void *monitor(void *arg) {
 
 	while(!producer_done || atomic_queue_size(work_queue)) {
         if(consumer_threads == 0 && atomic_queue_size(work_queue) > WORK_MIN_THRESH) {
-            printf("Test\n");
             dead = dead_thread_index();
             pthread_create(&consumers[dead], NULL, consumer, &dead);
             pthread_done[dead] = 1;
