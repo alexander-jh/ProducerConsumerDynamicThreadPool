@@ -4,7 +4,7 @@ struct transform_struct {
 	char        cmd;
 	uint16_t    key;
 	uint16_t    seq_num;
-	uint16_t    queue_pos;
+	int         queue_pos;
 	uint16_t	encoded_key;
 	uint16_t    decoded_key;
 	double      encoded_ret;
@@ -30,7 +30,7 @@ void set_key(transform_t *t, uint16_t key) { t->key = key; }
 
 void set_seq_num(transform_t *t, uint16_t seq_num) { t->seq_num = seq_num; }
 
-void set_queue_pos(transform_t *t, uint16_t queue_pos) { t->queue_pos = queue_pos; }
+void set_queue_pos(transform_t *t, int queue_pos) { t->queue_pos = queue_pos; }
 
 void set_encoded_key(transform_t *t, uint16_t encoded_key) { t->encoded_key = encoded_key; }
 
@@ -46,7 +46,7 @@ uint16_t get_key(transform_t *t) { return t->key; }
 
 uint16_t get_seq_num(transform_t *t) { return t->seq_num; }
 
-uint16_t get_queue_pos(transform_t *t) { return t->queue_pos; }
+int get_queue_pos(transform_t *t) { return t->queue_pos; }
 
 uint16_t get_encoded_key(transform_t *t) { return t->encoded_key; }
 

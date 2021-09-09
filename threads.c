@@ -6,12 +6,15 @@ void *reader(void *arg) {
 	transform_t *t = task_create();
     /* Using STDIN for file input */
     while(fscanf(stdin, "%c %hu", &cmd, &key)) {
-		if(cmd == 'X') break;
-		set_cmd(t, cmd);
-		set_key(t, key);
-		set_seq_num(t, ++writer_pos);
-		atomic_queue_add(input_queue, t);
-		t = task_create();
+		if(cmd == 'X') {
+            break;
+        } else if(!cmd && ! key) {
+            set_cmd(t, cmd);
+            set_key(t, key);
+            set_seq_num(t, ++writer_pos);
+            atomic_queue_add(input_queue, t);
+            t = task_create();
+        }
 	}
 	pthread_exit(arg);
 }
@@ -20,7 +23,7 @@ void *producer(void *arg) {
 	transform_t *task;
 	uint16_t out_val;
 	double retval;
-	while(!producer_done) {
+	while(!reader_done && !atomic_queue_size(input_queue)) {
 		task = (transform_t *) atomic_queue_remove(input_queue, false);
         if(task == NULL && reader_done)
             break;
@@ -91,7 +94,7 @@ void *consumer(void *arg) {
 	transform_t *task;
 	uint16_t out_val;
 	double retval;
-	while(!consumer_done) {
+	while(!producer_done && !atomic_queue_size(work_queue)) {
 		if(atomic_queue_size(work_queue) < WORK_MIN_THRESH)
     		break;
 

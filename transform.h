@@ -14,7 +14,7 @@ void set_key(transform_t *t, uint16_t key);
 
 void set_seq_num(transform_t *t, uint16_t seq_num);
 
-void set_queue_pos(transform_t *t, uint16_t queue_pos);
+void set_queue_pos(transform_t *t, int queue_pos);
 
 void set_encoded_key(transform_t *t, uint16_t encoded_key);
 
@@ -30,7 +30,7 @@ uint16_t get_key(transform_t *t);
 
 uint16_t get_seq_num(transform_t *t);
 
-uint16_t get_queue_pos(transform_t *t);
+int get_queue_pos(transform_t *t);
 
 uint16_t get_encoded_key(transform_t *t);
 

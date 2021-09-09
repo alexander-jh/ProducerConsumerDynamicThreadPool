@@ -51,18 +51,22 @@ int main(void) {
     /* Join on completion of reader thread. */
 	pthread_join(reader_thread, NULL);
     reader_done = 1;
+    printf("\nReader done\n");
 
     /* Join on completion of producer threads. */
 	for(i = 0; i < PRODUCER_THREADS; ++i)
 		pthread_join(producer_threads[i], NULL);
 	producer_done = 1;
+    printf("\nProducers done\n");
 
     /* Join on completion of consumer monitor thread. */
     pthread_join(monitor_thread, NULL);
 	consumer_done = 1;
+    printf("\nConsumers done\n");
 
     /* Join on completion of writer threads. */
 	pthread_join(writer_thread, NULL);
+    printf("\nWriter done\n");
 
     destroy_queues();
 
