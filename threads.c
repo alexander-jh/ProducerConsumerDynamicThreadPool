@@ -10,7 +10,7 @@ struct thread_struct {
 thread_t *create_thread(atomic_queue_t *q, void* (*worker)(void *)) {
 	pthread_attr_t attr;
 	int ret;
-	thread_t *t = (thread_t *) calloc(sizeof(thread_t *), 1);
+	thread_t *t = (thread_t *) calloc(sizeof(thread_t), 1);
 	if(t == NULL) return NULL;
 	pthread_attr_init(&attr);
 	// Create detached thread so join is not necessary
