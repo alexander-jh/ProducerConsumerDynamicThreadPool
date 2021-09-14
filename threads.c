@@ -100,7 +100,7 @@ void *monitor(void *arg) {
 			atomic_queue_add(run_queue, create_thread(work_queue, consumer));
 		} else if((rq > 1 && wq < WORK_MAX_THRESH) ||
 				(rq && wq < WORK_MIN_THRESH && !producer_done)) {
-			t = (thread_t *) atomic_queue_remove(run_queue, true);
+			t = (thread_t *) atomic_queue_remove(run_queue, false);
 			pthread_mutex_lock(&t->mutex);
 			t->state = THREAD_STOPPING;
 			pthread_mutex_unlock(&t->mutex);
@@ -110,7 +110,7 @@ void *monitor(void *arg) {
 	}
 
 	while(atomic_queue_size(run_queue)) {
-		t = (thread_t *) atomic_queue_remove(run_queue, true);
+		t = (thread_t *) atomic_queue_remove(run_queue, false);
 		pthread_mutex_lock(&t->mutex);
 		t->state = THREAD_STOPPING;
 		pthread_mutex_unlock(&t->mutex);
