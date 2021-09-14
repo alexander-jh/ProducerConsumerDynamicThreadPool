@@ -11,7 +11,7 @@ struct transform_struct {
 	double      decoded_ret;
 };
 
-transform_t *task_create() {
+transform_t *transform_create() {
 	transform_t *t = calloc(1, sizeof(transform_t));
 	if(!t) {
 		perror("Error: Failed to allocate memory for task_t.\n");

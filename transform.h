@@ -4,7 +4,7 @@
 
 typedef struct transform_struct transform_t;
 
-transform_t *task_create(void);
+transform_t *transform_create(void);
 
 void task_destroy(transform_t *t);
 

@@ -16,9 +16,6 @@ atomic_int  	producer_done;
 atomic_int		consumer_done;
 
 atomic_int      writer_pos;
-atomic_int      consumer_threads;
-
-atomic_int      pthread_done[CONSUMER_THREAD_MAX];
 
 /*
  * Entry function for main program.
@@ -86,12 +83,8 @@ void destroy_queues() {
 }
 
 void set_booleans() {
-	uint16_t i;
-    writer_pos      = 0;
-	reader_done     = 0;
-	producer_done   = 0;
-	consumer_done   = 0;
-	consumer_threads = 0;
-    for(i = 0; i < CONSUMER_THREAD_MAX; ++i)
-        pthread_done[i] = 0;
+    writer_pos          = 0;
+	reader_done         = 0;
+	producer_done       = 0;
+	consumer_done       = 0;
 }
