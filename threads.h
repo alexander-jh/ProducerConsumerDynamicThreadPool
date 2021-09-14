@@ -20,7 +20,7 @@
 #define THREAD_STOPPING         0x1
 #define THREAD_RUNNING          0x2
 
-#define SLEEP_INTERVAL          5
+#define SLEEP_INTERVAL          1
 
 extern atomic_queue_t   *input_queue;
 extern atomic_queue_t	*work_queue;
