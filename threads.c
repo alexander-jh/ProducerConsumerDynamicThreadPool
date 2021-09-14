@@ -85,7 +85,7 @@ void *producer(void *arg) {
 }
 
 void *monitor(void *arg) {
-	int i, wq, rq;
+	int wq, rq;
 	atomic_queue_t *run_queue;
 	thread_t *t;
 
@@ -110,8 +110,10 @@ void *monitor(void *arg) {
 	}
 
 	while(atomic_queue_size(run_queue)) {
-		t = atomic_queue_remove(run_queue, true);
-		thread_delete(t);
+		t = (thread_t *) atomic_queue_remove(run_queue, true);
+		pthread_mutex_lock(&t->mutex);
+		t->state = THREAD_STOPPING;
+		pthread_mutex_unlock(&t->mutex);
 	}
 
 	pthread_exit(arg);
