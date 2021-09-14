@@ -9,11 +9,13 @@ struct thread_struct {
 
 thread_t *create_thread(atomic_queue_t *q, void* (*worker)(void *)) {
 	pthread_attr_t attr;
+	int ret;
 	thread_t *t = (thread_t *) calloc(sizeof(thread_t *), 1);
 	if(t == NULL) return NULL;
 	pthread_attr_init(&attr);
 	// Create detached thread so join is not necessary
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	ret = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	if(ret != 0) return NULL;
 	t->queue = q;
 	t->state = THREAD_RUNNING;
 	pthread_mutex_init(&t->mutex, NULL);
@@ -96,6 +98,7 @@ void *monitor(void *arg) {
 		if ((wq > WORK_MIN_THRESH && rq < 1) ||
 				(rq < CONSUMER_THREAD_MAX && wq > WORK_MAX_THRESH)) {
 			t = create_thread(work_queue, consumer);
+			if(t == NULL) continue;
 			atomic_queue_add(run_queue, t);
 			printf("Starting thread %lu\n", t->tid);
 		} else if((rq > 1 && wq < WORK_MAX_THRESH) ||
