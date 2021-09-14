@@ -14,7 +14,7 @@
 #define INPUT_BUFFER_MAX        85
 #define WORK_BUFFER_SIZE        200
 #define WORK_MAX_THRESH         150
-#define WORK_MIN_THRESH         50
+#define WORK_MIN_THRESH         5
 #define OUTPUT_BUFFER_MAX       200
 
 #define THREAD_STOPPING         0x1

@@ -92,10 +92,12 @@ void *monitor(void *arg) {
 		sleep(SLEEP_INTERVAL);
 		wq = atomic_queue_size(work_queue);
 		rq = atomic_queue_size(run_queue);
+		printf("Consumer working %d, %d \n", wq, rq);
 		if ((wq > WORK_MIN_THRESH && rq < 1) ||
 				(rq < CONSUMER_THREAD_MAX && wq > WORK_MAX_THRESH)) {
-			printf("Consumer working \n");
-			atomic_queue_add(run_queue, create_thread(work_queue, consumer));
+			t = create_thread(work_queue, consumer);
+			atomic_queue_add(run_queue, t);
+			printf("Starting thread %lu\n", t->tid);
 		} else if((rq > 1 && wq < WORK_MAX_THRESH) ||
 				(rq && wq < WORK_MIN_THRESH && !producer_done)) {
 			t = (thread_t *) atomic_queue_remove(run_queue, false);
