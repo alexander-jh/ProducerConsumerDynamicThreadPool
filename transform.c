@@ -13,7 +13,7 @@ struct transform_struct {
 
 transform_t *transform_create() {
 	transform_t *t = calloc(1, sizeof(transform_t));
-	if(!t) {
+	if(t == NULL) {
 		perror("Error: Failed to allocate memory for task_t.\n");
 		exit(EXIT_FAILURE);
 	}
@@ -28,7 +28,7 @@ void set_cmd(transform_t *t, char cmd) { t->cmd = cmd; }
 
 void set_key(transform_t *t, uint16_t key) { t->key = key; }
 
-void set_seq_num(transform_t *t, uint16_t seq_num) { t->seq_num = seq_num; }
+void set_seq_num(transform_t *t, int seq_num) { t->seq_num = seq_num; }
 
 void set_queue_pos(transform_t *t, int queue_pos) { t->queue_pos = queue_pos; }
 
@@ -44,7 +44,7 @@ char get_cmd(transform_t *t) { return t->cmd; }
 
 uint16_t get_key(transform_t *t) { return t->key; }
 
-uint16_t get_seq_num(transform_t *t) { return t->seq_num; }
+int get_seq_num(transform_t *t) { return t->seq_num; }
 
 int get_queue_pos(transform_t *t) { return t->queue_pos; }
 

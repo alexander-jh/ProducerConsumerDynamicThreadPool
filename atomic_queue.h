@@ -15,18 +15,16 @@
 
 #include "transform.h"
 
+typedef struct queue_node_struct queue_node_t;
+
 typedef struct atomic_queue_struct atomic_queue_t;
 
-atomic_queue_t *atomic_queue_create(uint16_t size);
+atomic_queue_t *atomic_queue_create(int size);
 
 void atomic_queue_destroy(atomic_queue_t *q);
 
-void atomic_queue_add(atomic_queue_t *q, void *ele);
+bool atomic_queue_push(atomic_queue_t *queue, void *data);
 
-void *atomic_queue_remove(atomic_queue_t *q, bool is_wq);
+void *atomic_queue_pop(atomic_queue_t *queue, bool is_wq);
 
-void *_atomic_queue_remove(atomic_queue_t *q, bool is_wq);
-
-void *_atomic_queue_try_remove(atomic_queue_t *q, bool is_wq);
-
-int atomic_queue_size(atomic_queue_t *q);
+int atomic_queue_size(atomic_queue_t *queue);

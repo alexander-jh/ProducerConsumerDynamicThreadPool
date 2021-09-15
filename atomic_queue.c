@@ -5,72 +5,91 @@
 
 #include "atomic_queue.h"
 
-struct atomic_queue_struct {
-	size_t head, tail;
-	pthread_mutex_t lock;
-	sem_t front_sem, open_sem;
-	uint16_t max;
-    atomic_int size;
-	void **data;
+struct queue_node_struct {
+	void            *data;
+	queue_node_t    *next;
 };
 
-atomic_queue_t *atomic_queue_create(uint16_t size) {
-	atomic_queue_t *q = calloc(1, sizeof(atomic_queue_t));
+struct atomic_queue_struct {
+	int                 size;
+	int                 max;
+	pthread_mutex_t     *lock;
+	queue_node_t        *head;
+	queue_node_t        *tail;
+};
+
+atomic_queue_t *atomic_queue_create(int size) {
+	atomic_queue_t *q = malloc(sizeof(atomic_queue_t));
 	if(!q) {
 		perror("Error: memory allocation of atomic_queue_t failed.\n");
 		exit(EXIT_FAILURE);
 	}
-	q->data = calloc(size, sizeof(void *));
-	if(!q->data) {
-		perror("Error: memory allocation of atomic_queue_t data failed.\n");
+	q->head = NULL;
+	q->tail = NULL;
+	pthread_mutex_t *mutex = malloc(sizeof(pthread_mutex_t));
+	if(!mutex) {
+		perror("Error: memory allocation of atomic_queue_t failed.\n");
 		exit(EXIT_FAILURE);
 	}
+	q->lock = mutex;
+	q->size = 0;
 	q->max = size;
-    q->size = 0;
-	sem_init(&q->front_sem, 0, 0);
-	sem_init(&q->open_sem, 0, size);
-	pthread_mutex_init(&q->lock, NULL);
 	return q;
 }
 
-void atomic_queue_destroy(atomic_queue_t *q) {
-	free(q->data);
-	free(q);
+void atomic_queue_destroy(atomic_queue_t *queue) {
+	free(queue->lock);
+	free(queue);
+	queue = NULL;
 }
 
-void atomic_queue_add(atomic_queue_t *q, void *ele) {
-	sem_wait(&q->open_sem);
-	pthread_mutex_lock(&q->lock);
-	q->data[q->head++] = ele;
-    q->size++;
-	if(q->head >= q->max)
-		q->head = 0;
-	pthread_mutex_unlock(&q->lock);
-	sem_post(&q->front_sem);
+bool atomic_queue_push(atomic_queue_t *queue, void *data) {
+	bool ret = true;
+	queue_node_t *element, *tail;
+	element = malloc(sizeof(queue_node_t));
+	element->data = data;
+	element->next = NULL;
+
+	pthread_mutex_lock(queue->lock);
+
+	if(queue->head == NULL) {
+		queue->head = element;
+		queue->tail = element;
+		++queue->size;
+	} else if(queue->size == queue->max) {
+		ret = false;
+	} else {
+		tail = queue->tail;
+		tail->next = element;
+		queue->tail = element;
+		++queue->size;
+	}
+	pthread_mutex_unlock(queue->lock);
+	return ret;
 }
 
-void *atomic_queue_remove(atomic_queue_t *q, bool is_wq) {
-	sem_wait(&q->front_sem);
-	return _atomic_queue_remove(q, is_wq);
+void *atomic_queue_pop(atomic_queue_t *queue, bool is_wq) {
+	void *data;
+	queue_node_t *head;
+	pthread_mutex_lock(queue->lock);
+	head = queue->head;
+	if(!head) {
+		data = NULL;
+	} else {
+		queue->head = head->next;
+		data = head->data;
+		free(head);
+		if(is_wq) set_queue_pos(data, queue->size);
+		--queue->size;
+	}
+	pthread_mutex_unlock(queue->lock);
+	return data;
 }
 
-void *_atomic_queue_remove(atomic_queue_t *q, bool is_wq) {
-	uint16_t pos;
-	pthread_mutex_lock(&q->lock);
-	void *pop = q->data[q->tail++];
-	pos = q->tail;
-    q->size--;
-	if(q->tail >= q->max) q->tail = 0;
-	if(is_wq) set_queue_pos((transform_t *) pop, pos);
-	pthread_mutex_unlock(&q->lock);
-	sem_post(&q->open_sem);
-	return pop;
+int atomic_queue_size(atomic_queue_t *queue) {
+	int size;
+	pthread_mutex_lock(queue->lock);
+	size = queue->size;
+	pthread_mutex_unlock(queue->lock);
+	return size;
 }
-
-void *_atomic_queue_try_remove(atomic_queue_t *q, bool is_wq) {
-	return !sem_trywait(&q->front_sem) ?
-	       _atomic_queue_remove(q, is_wq) :
-		   NULL;
-}
-
-int atomic_queue_size(atomic_queue_t *q) { return q->size; }

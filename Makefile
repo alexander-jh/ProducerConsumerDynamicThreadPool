@@ -1,9 +1,10 @@
 # Source and lib files
-PROGRAM = executor
+PROGRAM = lab1_hoke62_hoke62
 FILES.c = executor.c threads.c atomic_queue.c transform.c
 FILES.h = threads.h atomic_queue.h transform.h transformMat.h
 FILES.o = ${FILES.c:.c=.o} transformMat.o
 TEST	= input/PCS_data_t00100
+TEST1	= input/PCS_data_test
 
 # Compiler options
 CC 		= gcc
@@ -32,7 +33,10 @@ atomic_queue.o:	${FILES.h}
 threads.o:		${FILES.h}
 
 test: ${PROGRAM} clean
-	./executor <${TEST}
+	./lab1_hoke62_hoke62 <${TEST} 2> error.log
+
+min-test: ${PROGRAM} clean
+	./lab1_hoke62_hoke62 <${TEST1} 2> error.log
 
 clean:
 	rm -rf executor.o threads.o atomic_queue.o transform.o

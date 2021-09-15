@@ -12,7 +12,7 @@ void set_cmd(transform_t *t, char cmd);
 
 void set_key(transform_t *t, uint16_t key);
 
-void set_seq_num(transform_t *t, uint16_t seq_num);
+void set_seq_num(transform_t *t, int seq_num);
 
 void set_queue_pos(transform_t *t, int queue_pos);
 
@@ -28,7 +28,7 @@ char get_cmd(transform_t *t);
 
 uint16_t get_key(transform_t *t);
 
-uint16_t get_seq_num(transform_t *t);
+int get_seq_num(transform_t *t);
 
 int get_queue_pos(transform_t *t);
 
