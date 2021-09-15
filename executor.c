@@ -79,7 +79,7 @@ int main(void) {
     destroy_queues();
 
 	fprintf(stderr,
-			"Total Time: %ld:%02ld\nProducer Time: %ld:%02ld\nConsumer Time(seconds): %ld:%02ld\n",
+			"Total Time: %ld:%02ld\nProducer Time: %ld:%02ld\nConsumer Time: %ld:%02ld\n",
 			(end - start) / 60, (end - start) % 60,
 			(producer_end - producer_start) / 60, (producer_end - producer_start) % 60,
 			(consumer_end - consumer_start) / 60, (consumer_end - consumer_start) % 60);

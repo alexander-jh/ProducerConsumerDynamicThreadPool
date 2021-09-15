@@ -7,6 +7,7 @@ struct thread_struct {
 };
 
 struct flag_struct {
+	pthread_mutex_t mutex;
 	atomic_int      above_low;
 	atomic_int      above_high;
 	atomic_int      is_full;
@@ -17,6 +18,7 @@ struct flag_struct {
 flag_t *create_flags() {
 	flag_t *flag = malloc(sizeof(flag_t));
 	if(!flag) {
+		pthread_mutex_init(&flags->mutex, NULL);
 		flags->above_low = 0;
 		flags->above_high = 0;
 		flags->is_full = 0;
@@ -63,7 +65,7 @@ void *reader(void *arg) {
 			set_key(t, key);
 			set_seq_num(t, ++writer_pos);
 			CHECK_IF_INPUT_FULL:
-			ret = atomic_queue_push(input_queue, t);
+			ret = atomic_queue_push(input_queue, t, false);
 			if(!ret) {
 				sleep(SLEEP_INTERVAL);
 				goto CHECK_IF_INPUT_FULL;
@@ -80,7 +82,7 @@ void *producer(void *arg) {
 	uint16_t out_val;
 	double retval;
 	while(!reader_done || atomic_queue_size(input_queue) > 0) {
-		task = (transform_t *) atomic_queue_pop(input_queue, false);
+		task = (transform_t *) atomic_queue_pop(input_queue);
 
 		if(task == NULL) continue;
 
@@ -106,7 +108,7 @@ void *producer(void *arg) {
 		set_encoded_key(task, out_val);
 		set_encoded_ret(task, retval);
 		CHECK_IF_WORK_FULL:
-			ret = atomic_queue_push(work_queue, task);
+			ret = atomic_queue_push(work_queue, task, true);
 			if(!ret) {
 				sleep(SLEEP_INTERVAL);
 				goto CHECK_IF_WORK_FULL;
@@ -127,10 +129,11 @@ void *monitor(void *arg) {
             (rq < CONSUMER_THREAD_MAX && wq > WORK_MAX_THRESH) ||
 			(rq < 1 && producer_done)) {
 			t = create_thread(consumer);
-			atomic_queue_push(run_queue, t);
+			atomic_queue_push(run_queue, t, false);
+			printf("Total consumers: %d\n", rq + 1);
 		} else if((rq > 1 && wq < WORK_MAX_THRESH) ||
 				(rq && wq < WORK_MIN_THRESH && !producer_done)) {
-			t = (thread_t *) atomic_queue_pop(run_queue, false);
+			t = (thread_t *) atomic_queue_pop(run_queue);
 			if(!t) continue;
 			pthread_mutex_lock(&t->mutex);
 			t->state = THREAD_STOPPING;
@@ -141,7 +144,7 @@ void *monitor(void *arg) {
 	}
 
 	while(atomic_queue_size(run_queue)) {
-		t = (thread_t *) atomic_queue_pop(run_queue, false);
+		t = (thread_t *) atomic_queue_pop(run_queue);
 		if(!t) continue;
 		pthread_mutex_lock(&t->mutex);
 		t->state = THREAD_STOPPING;
@@ -167,7 +170,7 @@ void *consumer(void *arg) {
 			break;
 		}
 
-		if(!(task = (transform_t *) atomic_queue_pop(work_queue, true))) {
+		if(!(task = (transform_t *) atomic_queue_pop(work_queue))) {
             pthread_mutex_unlock(&self->mutex);
             continue;
         }
@@ -201,7 +204,7 @@ void *consumer(void *arg) {
 		set_decoded_ret(task, retval);
 
 		CHECK_IF_OUTPUT_FULL:
-			ret = atomic_queue_push(output_queue, task);
+			ret = atomic_queue_push(output_queue, task, false);
 			if(!ret) {
 				pthread_mutex_unlock(&self->mutex);
 				sleep(SLEEP_INTERVAL);
@@ -217,7 +220,7 @@ void *consumer(void *arg) {
 void *writer(void *arg) {
 	transform_t *t;
     while(1) {
-        t = (transform_t *) atomic_queue_pop(output_queue, false);
+        t = (transform_t *) atomic_queue_pop(output_queue);
         if(atomic_queue_size(output_queue) == 0 && consumer_done)
             pthread_exit(arg);
         else if(t) {
@@ -237,6 +240,7 @@ void update_flag_status(int size) {
 }
 
 void report_status(int size, char cmd, int pos, uint16_t key) {
+	pthread_mutex_lock(&flags->mutex);
 	update_flag_status(size);
 	int current_state;
 	if(flags->is_empty) {
@@ -276,4 +280,5 @@ void report_status(int size, char cmd, int pos, uint16_t key) {
 			        cmd, pos, key);
 		flags->state = current_state;
 	}
+	pthread_mutex_unlock(&flags->mutex);
 }

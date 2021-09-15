@@ -12,13 +12,12 @@
 
 #define PRODUCER_THREADS        4
 #define CONSUMER_THREAD_MAX     20
-#define INPUT_BUFFER_MAX        85
+#define INPUT_BUFFER_MAX        200
 #define WORK_BUFFER_SIZE        200
 #define WORK_MAX_THRESH         150
 #define WORK_MIN_THRESH         50
 #define OUTPUT_BUFFER_MAX       200
 
-#define NO_FLAG                 0x0
 #define BELOW_LOWER_BOUND       0x1
 #define ABOVE_LOWER_BOUND       0x2
 #define BELOW_HIGHER_BOUND      0x3

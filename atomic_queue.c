@@ -43,7 +43,7 @@ void atomic_queue_destroy(atomic_queue_t *queue) {
 	queue = NULL;
 }
 
-bool atomic_queue_push(atomic_queue_t *queue, void *data) {
+bool atomic_queue_push(atomic_queue_t *queue, void *data, bool is_wq) {
 	bool ret = true;
 	queue_node_t *element, *tail;
 	element = malloc(sizeof(queue_node_t));
@@ -51,7 +51,7 @@ bool atomic_queue_push(atomic_queue_t *queue, void *data) {
 	element->next = NULL;
 
 	pthread_mutex_lock(queue->lock);
-
+	if(is_wq) set_queue_pos(element->data, queue->size);
 	if(queue->head == NULL) {
 		queue->head = element;
 		queue->tail = element;
@@ -68,7 +68,7 @@ bool atomic_queue_push(atomic_queue_t *queue, void *data) {
 	return ret;
 }
 
-void *atomic_queue_pop(atomic_queue_t *queue, bool is_wq) {
+void *atomic_queue_pop(atomic_queue_t *queue) {
 	void *data;
 	queue_node_t *head;
 	pthread_mutex_lock(queue->lock);
@@ -79,7 +79,6 @@ void *atomic_queue_pop(atomic_queue_t *queue, bool is_wq) {
 		queue->head = head->next;
 		data = head->data;
 		free(head);
-		if(is_wq) set_queue_pos(data, queue->size);
 		--queue->size;
 	}
 	pthread_mutex_unlock(queue->lock);

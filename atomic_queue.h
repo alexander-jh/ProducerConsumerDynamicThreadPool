@@ -23,8 +23,8 @@ atomic_queue_t *atomic_queue_create(int size);
 
 void atomic_queue_destroy(atomic_queue_t *q);
 
-bool atomic_queue_push(atomic_queue_t *queue, void *data);
+bool atomic_queue_push(atomic_queue_t *queue, void *data, bool is_wq);
 
-void *atomic_queue_pop(atomic_queue_t *queue, bool is_wq);
+void *atomic_queue_pop(atomic_queue_t *queue);
 
 int atomic_queue_size(atomic_queue_t *queue);
