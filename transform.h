@@ -1,12 +1,31 @@
+/*
+ * Data structure for holding values in through the transformation
+ * process.
+ */
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 
+/*
+ * Struct to contain all the required values throughout the process
+ * (char) cmd, (uint16_t) key, (int) sequence_number,
+ * (int) work_queue_position, (uint16_t) encoded and decoded key,
+ * (double) encoded and decoded return from transforms.
+ */
 typedef struct transform_struct transform_t;
 
+// No-arg constructor for transform object.
 transform_t *transform_create(void);
 
+// Destructor for the transform object.
 void task_destroy(transform_t *t);
+
+/*
+ * Since transform_t is referenced as a void pointer, direct access to
+ * the struct is not possible. So default getter/setter functions
+ * were created for each field.
+ */
 
 void set_cmd(transform_t *t, char cmd);
 

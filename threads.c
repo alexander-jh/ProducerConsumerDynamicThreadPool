@@ -6,37 +6,14 @@ struct thread_struct {
 	int             state;
 };
 
-struct flag_struct {
-	pthread_mutex_t mutex;
-	atomic_int      above_low;
-	atomic_int      above_high;
-	atomic_int      is_full;
-	atomic_int      is_empty;
-	atomic_int      state;
-};
-
-flag_t *create_flags() {
-	flag_t *flag = malloc(sizeof(flag_t));
-	if(!flag) {
-		pthread_mutex_init(&flags->mutex, NULL);
-		flags->above_low = 0;
-		flags->above_high = 0;
-		flags->is_full = 0;
-		flags->is_empty = 1;
-		flags->state = WORK_QUEUE_EMPTY;
-	}
-	return flag;
-}
-
-void flag_delete(flag_t *f) {
-	free(f);
-	f = NULL;
-}
-
 thread_t *create_thread(void* (*worker)(void *)) {
 	pthread_attr_t attr;
 	thread_t *t;
 	t = malloc(sizeof(thread_t));
+	if(!t) {
+		fprintf(stderr, "Error: Failed to allocate thread.\n");
+		exit(EXIT_FAILURE);
+	}
 	pthread_attr_init(&attr);
 	// Create detached thread so join is not necessary
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
@@ -47,45 +24,42 @@ thread_t *create_thread(void* (*worker)(void *)) {
 }
 
 void thread_delete(thread_t * t) {
+	pthread_mutex_destroy(&t->mutex);
 	free(t);
 }
 
 void *reader(void *arg) {
-	int ret;
+	int writer_pos;
 	char cmd;
 	uint16_t key;
-	transform_t *t = transform_create();
-    /* Using STDIN for file input */
+	transform_t *t;
+    writer_pos = 0;
+	/* Using STDIN for file input */
     while(fscanf(stdin, "%c %hu", &cmd, &key)) {
 		if(cmd == 'X') {
             break;
+		// If key is valid and cmd is valid create transform struct for
+		// insertion.
         } else if(key > 0 && (cmd == 'A' || cmd == 'B' || cmd == 'C' ||
                               cmd == 'D' || cmd == 'E')) {
+			t = transform_create();
 			set_cmd(t, cmd);
 			set_key(t, key);
 			set_seq_num(t, ++writer_pos);
-			CHECK_IF_INPUT_FULL:
-			ret = atomic_queue_push(input_queue, t, false);
-			if(!ret) {
-				sleep(SLEEP_INTERVAL);
-				goto CHECK_IF_INPUT_FULL;
-			}
-			t = transform_create();
+			atomic_queue_push(input_queue, t, false);
+			total_produced++;
 		}
 	}
 	pthread_exit(arg);
 }
 
 void *producer(void *arg) {
-	int ret;
 	transform_t *task;
 	uint16_t out_val;
 	double retval;
-	while(!reader_done || atomic_queue_size(input_queue) > 0) {
+	// Exits on completion of reader once the input_queue is empty.
+	while(!reader_done || atomic_queue_size(input_queue)) {
 		task = (transform_t *) atomic_queue_pop(input_queue);
-
-		if(task == NULL) continue;
-
 		switch(get_cmd(task)) {
 			case 'A':
 				out_val = transformA1(get_key(task), &retval);
@@ -107,49 +81,48 @@ void *producer(void *arg) {
 		}
 		set_encoded_key(task, out_val);
 		set_encoded_ret(task, retval);
-		CHECK_IF_WORK_FULL:
-			ret = atomic_queue_push(work_queue, task, true);
-			if(!ret) {
-				sleep(SLEEP_INTERVAL);
-				goto CHECK_IF_WORK_FULL;
-			}
+		atomic_queue_push(work_queue, task, true);
 	}
 	pthread_exit(arg);
 }
 
 void *monitor(void *arg) {
-	int wq, rq;
+	int wq, rq, last;
 	thread_t *t;
-
+	last = EMPTY_BUFFER;
 	while(1) {
-		sleep(SLEEP_INTERVAL);
 		wq = atomic_queue_size(work_queue);
 		rq = atomic_queue_size(run_queue);
-		if ((wq > WORK_MIN_THRESH && rq < 1) ||
-            (rq < CONSUMER_THREAD_MAX && wq > WORK_MAX_THRESH) ||
-			(rq < 1 && producer_done)) {
+		// Check reportable events.
+		if(!alert_waiting) last = set_alert(last, wq);
+		// Create threads and sleep after creation.
+		if((rq < CONSUMER_THREAD_MAX) && ((wq > WORK_MIN_THRESH && rq < 1) ||
+				(wq > WORK_MAX_THRESH) || (wq && producer_done))) {
 			t = create_thread(consumer);
 			atomic_queue_push(run_queue, t, false);
-			printf("Total consumers: %d\n", rq + 1);
-		} else if((rq > 1 && wq < WORK_MAX_THRESH) ||
-				(rq && wq < WORK_MIN_THRESH && !producer_done)) {
+			sleep(SLEEP_INTERVAL);
+		// If there are more than one thread, the producer is alive, and
+		// the work queue is below the minimum threshold cancel threads.
+		} else if(rq && wq < WORK_MIN_THRESH && !producer_done) {
 			t = (thread_t *) atomic_queue_pop(run_queue);
-			if(!t) continue;
 			pthread_mutex_lock(&t->mutex);
 			t->state = THREAD_STOPPING;
 			pthread_mutex_unlock(&t->mutex);
-		} else if(wq == 0 && producer_done) {
+		// Exit loop once work queue is empties and producer is done.
+		} else if(!atomic_queue_size(work_queue) && producer_done) {
 			break;
 		}
 	}
-
+	// Kill all remaining consumer threads.
 	while(atomic_queue_size(run_queue)) {
 		t = (thread_t *) atomic_queue_pop(run_queue);
-		if(!t) continue;
 		pthread_mutex_lock(&t->mutex);
 		t->state = THREAD_STOPPING;
 		pthread_mutex_unlock(&t->mutex);
 	}
+	// Spinlock until remaining consumers finish
+	while(total_produced != total_consumed);
+	
 	pthread_exit(arg);
 }
 
@@ -158,28 +131,27 @@ void *consumer(void *arg) {
 	thread_t *self;
 	uint16_t out_val;
 	double retval;
-	int ret;
-
+	// Get reference to thread struct.
 	self = (thread_t *) arg;
-
 	while(1) {
+		// Acquire lock to check current state no other exclusion is
+		// necessary throughout this work cycle.
 		pthread_mutex_lock(&self->mutex);
-
 		if(self->state == THREAD_STOPPING) {
 			pthread_mutex_unlock(&self->mutex);
 			break;
 		}
+		pthread_mutex_unlock(&self->mutex);
 
-		if(!(task = (transform_t *) atomic_queue_pop(work_queue))) {
-            pthread_mutex_unlock(&self->mutex);
-            continue;
-        }
+		task = (transform_t *) atomic_queue_pop(work_queue);
 
-		report_status(atomic_queue_size(work_queue),
-		              get_cmd(task),
-		              get_queue_pos(task),
-		              get_key(task));
-
+		// If alert exists report.
+		if(alert_waiting) {
+			alert_waiting = 0;
+			semaphore_alert(get_seq_num(task),
+			                get_cmd(task),
+			                get_key(task));
+		}
 		switch(get_cmd(task)) {
 			case 'A':
 				out_val = transformA2(get_encoded_key(task), &retval);
@@ -199,19 +171,11 @@ void *consumer(void *arg) {
 			default:
 				continue;
 		}
-
 		set_decoded_key(task, out_val);
 		set_decoded_ret(task, retval);
-
-		CHECK_IF_OUTPUT_FULL:
-			ret = atomic_queue_push(output_queue, task, false);
-			if(!ret) {
-				pthread_mutex_unlock(&self->mutex);
-				sleep(SLEEP_INTERVAL);
-				pthread_mutex_lock(&self->mutex);
-				goto CHECK_IF_OUTPUT_FULL;
-			}
-		pthread_mutex_unlock(&self->mutex);
+		// Mutual exclusion guaranteed in queue structure
+		if(task != NULL) total_consumed++;
+		atomic_queue_push(output_queue, task, false);
 	}
 	thread_delete(self);
 	pthread_exit(NULL);
@@ -219,66 +183,76 @@ void *consumer(void *arg) {
 
 void *writer(void *arg) {
 	transform_t *t;
-    while(1) {
-        t = (transform_t *) atomic_queue_pop(output_queue);
-        if(atomic_queue_size(output_queue) == 0 && consumer_done)
-            pthread_exit(arg);
-        else if(t) {
-	        printf("%d %d %c %hu %lf %hu %lf\n", get_seq_num(t),
-	               get_queue_pos(t), get_cmd(t), get_encoded_key(t),
-	               get_encoded_ret(t), get_decoded_key(t), get_decoded_ret(t));
-	        task_destroy(t);
-        }
+    while(atomic_queue_size(output_queue) || !consumer_done) {
+		// Redundant check to verify item still exists in output queue
+		// if it does not will get stuck in a semaphore wait indefinitely.
+	    if(atomic_queue_size(output_queue)) {
+		    t = (transform_t *) atomic_queue_pop(output_queue);
+		    printf("%d %d %c %hu %lf %hu %lf\n", get_seq_num(t),
+		           get_queue_pos(t), get_cmd(t), get_encoded_key(t),
+		           get_encoded_ret(t), get_decoded_key(t), get_decoded_ret(t));
+		    task_destroy(t);
+	    }
     }
+	pthread_exit(arg);
 }
 
-void update_flag_status(int size) {
-	flags->above_low    = size > WORK_MIN_THRESH;
-	flags->above_high   = size > WORK_MAX_THRESH;
-	flags->is_full      = size == WORK_BUFFER_SIZE;
-	flags->is_empty     = size == 0;
-}
-
-void report_status(int size, char cmd, int pos, uint16_t key) {
-	pthread_mutex_lock(&flags->mutex);
-	update_flag_status(size);
+int set_alert(int last, int wq) {
 	int current_state;
-	if(flags->is_empty) {
-		current_state = WORK_QUEUE_EMPTY;
-		if(flags->state != WORK_QUEUE_EMPTY)
-			fprintf(stderr, "Empty: %c %d %hu\n",
-			        cmd, pos, key);
-		flags->state = current_state;
-	} else if(!flags->above_low && !flags->is_empty) {
-		current_state = BELOW_LOWER_BOUND;
-		if(flags->state == ABOVE_LOWER_BOUND)
-			fprintf(stderr, "Below Lower: %c %d %hu\n",
-			        cmd, pos, key);
-		flags->state = current_state;
-	} else if(flags->above_high && !flags->is_full) {
-		current_state = ABOVE_HIGHER_BOUND;
-		if(flags->state == BELOW_HIGHER_BOUND)
-			fprintf(stderr, "Above Upper: %c %d %hu\n",
-			        cmd, pos, key);
-		flags->state = current_state;
-	} else if(flags->is_full) {
-		current_state = WORK_QUEUE_FULL;
-		if(flags->state != WORK_QUEUE_FULL)
-			fprintf(stderr, "Full: %c %d %hu\n",
-			        cmd, pos, key);
-		flags->state = current_state;
-	} else if(flags->above_low && !flags->above_high) {
-		current_state = ABOVE_LOWER_BOUND;
-		if(flags->state == BELOW_LOWER_BOUND)
-			fprintf(stderr, "Above Lower: %c %d %hu\n",
-			        cmd, pos, key);
-		flags->state = current_state;
-	} else {
-		current_state = BELOW_HIGHER_BOUND;
-		if(flags->state == ABOVE_HIGHER_BOUND)
-			fprintf(stderr, "Above Higher: %c %d %hu\n",
-			        cmd, pos, key);
-		flags->state = current_state;
+	if(wq == WORK_BUFFER_SIZE)
+		current_state = FULL_BUFFER;
+	else if(wq == 0)
+		current_state = EMPTY_BUFFER;
+	else if(wq > WORK_MAX_THRESH)
+		current_state = ABOVE_UPPER;
+	else if(wq > WORK_MIN_THRESH && wq < WORK_MAX_THRESH)
+		current_state = ABOVE_LOWER;
+	else
+		current_state = BELOW_LOWER;
+
+	if(current_state != last) {
+		last = current_state;
+
+		switch(current_state) {
+			case FULL_BUFFER:
+				sem_post(&full_buffer);
+				break;
+			case EMPTY_BUFFER:
+				sem_post(&empty_buffer);
+				break;
+			case ABOVE_UPPER:
+				sem_post(&upper_thresh);
+				break;
+			case ABOVE_LOWER:
+				sem_post(&lower_thresh);
+				break;
+			default:
+				break;
+		}
+		alert_waiting = (last != BELOW_LOWER);
 	}
-	pthread_mutex_unlock(&flags->mutex);
+	return last;
+}
+
+void semaphore_alert(int pos, char cmd, uint16_t key) {
+	if (sem_trywait(&lower_thresh) == 0) {
+		fprintf(stderr,
+				"Lower Threshold Crossed: %d %c %hu\n",
+				pos, cmd, key);
+		alert_waiting = 0;
+	} else if (sem_trywait(&upper_thresh) == 0) {
+		fprintf(stderr,
+		        "Upper Threshold Crossed: %d %c %hu\n",
+		        pos, cmd, key);
+		alert_waiting = 0;
+	} else if(sem_trywait(&full_buffer) == 0) {
+		fprintf(stderr,
+		        "Buffer Full: %d %c %hu\n",
+		        pos, cmd, key);
+		alert_waiting = 0;
+	} else if(sem_trywait(&empty_buffer) == 0) {
+		fprintf(stderr,
+		        "Buffer Empty: %d %c %hu\n",
+		        pos, cmd, key);
+	}
 }
