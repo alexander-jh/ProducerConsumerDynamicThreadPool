@@ -2,8 +2,7 @@
 
 struct thread_struct {
 	pthread_t       tid;
-	pthread_mutex_t mutex;
-	int             state;
+	atomic_int      state;
 };
 
 thread_t *create_thread(void* (*worker)(void *)) {
@@ -18,14 +17,13 @@ thread_t *create_thread(void* (*worker)(void *)) {
 	// Create detached thread so join is not necessary
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 	t->state = THREAD_RUNNING;
-	pthread_mutex_init(&t->mutex, NULL);
 	pthread_create(&t->tid, &attr, worker, (void *) t);
 	return t;
 }
 
 void thread_delete(thread_t * t) {
-	pthread_mutex_destroy(&t->mutex);
 	free(t);
+	t = NULL;
 }
 
 void *reader(void *arg) {
@@ -47,7 +45,7 @@ void *reader(void *arg) {
 			set_key(t, key);
 			set_seq_num(t, ++writer_pos);
 			atomic_queue_push(input_queue, t, false);
-			total_produced++;
+			sem_post(&consumed);
 		}
 	}
 	pthread_exit(arg);
@@ -58,8 +56,10 @@ void *producer(void *arg) {
 	uint16_t out_val;
 	double retval;
 	// Exits on completion of reader once the input_queue is empty.
-	while(!reader_done || atomic_queue_size(input_queue)) {
-		task = (transform_t *) atomic_queue_pop(input_queue);
+	while(atomic_queue_size(input_queue)) {
+		// Will automatically terminate on the end of all reader input
+		if(!(task = (transform_t *) try_queue_pop(input_queue)))
+			continue;
 		switch(get_cmd(task)) {
 			case 'A':
 				out_val = transformA1(get_key(task), &retval);
@@ -87,42 +87,53 @@ void *producer(void *arg) {
 }
 
 void *monitor(void *arg) {
-	int wq, rq, last;
+	int rq;
 	thread_t *t;
-	last = EMPTY_BUFFER;
-	while(1) {
-		wq = atomic_queue_size(work_queue);
+	uint8_t state = EMPTY_BUFFER;
+	// Exits on semaphore signal from producer
+	while(sem_trywait(&producer_done) < 0) {
+		// Update current state and report any potential changes
+		if(get_state(atomic_queue_size(work_queue), &state))
+			report_state_change(atomic_queue_top(work_queue), &state);
+
 		rq = atomic_queue_size(run_queue);
-		// Check reportable events.
-		if(!alert_waiting) last = set_alert(last, wq);
-		// Create threads and sleep after creation.
-		if((rq < CONSUMER_THREAD_MAX) && ((wq > WORK_MIN_THRESH && rq < 1) ||
-				(wq > WORK_MAX_THRESH) || (wq && producer_done))) {
-			t = create_thread(consumer);
-			atomic_queue_push(run_queue, t, false);
-			sleep(SLEEP_INTERVAL);
-		// If there are more than one thread, the producer is alive, and
-		// the work queue is below the minimum threshold cancel threads.
-		} else if(rq && wq < WORK_MIN_THRESH && !producer_done) {
-			t = (thread_t *) atomic_queue_pop(run_queue);
-			pthread_mutex_lock(&t->mutex);
-			t->state = THREAD_STOPPING;
-			pthread_mutex_unlock(&t->mutex);
-		// Exit loop once work queue is empties and producer is done.
-		} else if(!atomic_queue_size(work_queue) && producer_done) {
-			break;
+
+		switch(state) {
+			case BELOW_LOWER:
+				// Kill threads
+				t = (thread_t *) try_queue_pop(run_queue);
+				if(t) t->state = THREAD_STOPPING;
+				break;
+			case ABOVE_LOWER:
+			case ABOVE_UPPER:
+			case FULL_BUFFER:
+				// Only triggers once for above lower
+				if((!rq) || (state != ABOVE_LOWER && rq < CONSUMER_THREAD_MAX)) {
+					t = create_thread(consumer);
+					atomic_queue_push(run_queue, t, false);
+					sleep(SLEEP_INTERVAL);
+				}
+				break;
+			default:
+				break;
 		}
 	}
-	// Kill all remaining consumer threads.
-	while(atomic_queue_size(run_queue)) {
-		t = (thread_t *) atomic_queue_pop(run_queue);
-		pthread_mutex_lock(&t->mutex);
-		t->state = THREAD_STOPPING;
-		pthread_mutex_unlock(&t->mutex);
+
+	// Spawns max number of threads to consume remaining elements.
+	while(atomic_queue_size(run_queue) < CONSUMER_THREAD_MAX) {
+		atomic_queue_push(run_queue, create_thread(consumer), false);
+		sleep(1);
 	}
-	// Spinlock until remaining consumers finish
-	while(total_produced != total_consumed);
-	
+	// Wait for work queue to dry out
+	while(atomic_queue_size(work_queue));
+	// Soft kill each thread
+	while(atomic_queue_size(run_queue)) {
+		t = atomic_queue_pop(run_queue);
+		t->state = THREAD_STOPPING;
+	}
+	// Wait until last element is posted to output
+	while(sem_getvalue(&consumed, &rq) != 0);
+
 	pthread_exit(arg);
 }
 
@@ -133,25 +144,10 @@ void *consumer(void *arg) {
 	double retval;
 	// Get reference to thread struct.
 	self = (thread_t *) arg;
-	while(1) {
-		// Acquire lock to check current state no other exclusion is
-		// necessary throughout this work cycle.
-		pthread_mutex_lock(&self->mutex);
-		if(self->state == THREAD_STOPPING) {
-			pthread_mutex_unlock(&self->mutex);
-			break;
-		}
-		pthread_mutex_unlock(&self->mutex);
-
-		task = (transform_t *) atomic_queue_pop(work_queue);
-
-		// If alert exists report.
-		if(alert_waiting) {
-			alert_waiting = 0;
-			semaphore_alert(get_seq_num(task),
-			                get_cmd(task),
-			                get_key(task));
-		}
+	while(self->state != THREAD_STOPPING) {
+		task = (transform_t *) try_queue_pop(work_queue);
+		// Kills thread after exhaustion of queue
+		if(!task) continue;
 		switch(get_cmd(task)) {
 			case 'A':
 				out_val = transformA2(get_encoded_key(task), &retval);
@@ -173,86 +169,87 @@ void *consumer(void *arg) {
 		}
 		set_decoded_key(task, out_val);
 		set_decoded_ret(task, retval);
-		// Mutual exclusion guaranteed in queue structure
-		if(task != NULL) total_consumed++;
 		atomic_queue_push(output_queue, task, false);
+		sem_trywait(&consumed);
 	}
 	thread_delete(self);
 	pthread_exit(NULL);
 }
 
 void *writer(void *arg) {
+	int sem_v;
 	transform_t *t;
-    while(atomic_queue_size(output_queue) || !consumer_done) {
+    while(1) {
 		// Redundant check to verify item still exists in output queue
 		// if it does not will get stuck in a semaphore wait indefinitely.
-	    if(atomic_queue_size(output_queue)) {
-		    t = (transform_t *) atomic_queue_pop(output_queue);
+	    if((t = (transform_t *) try_queue_pop(output_queue))) {
 		    printf("%d %d %c %hu %lf %hu %lf\n", get_seq_num(t),
 		           get_queue_pos(t), get_cmd(t), get_encoded_key(t),
 		           get_encoded_ret(t), get_decoded_key(t), get_decoded_ret(t));
 		    task_destroy(t);
 	    }
+	    sem_getvalue(&consumer_done, &sem_v);
+		if(sem_v == 1 && !atomic_queue_size(output_queue)) break;
     }
 	pthread_exit(arg);
 }
 
-int set_alert(int last, int wq) {
-	int current_state;
-	if(wq == WORK_BUFFER_SIZE)
-		current_state = FULL_BUFFER;
-	else if(wq == 0)
-		current_state = EMPTY_BUFFER;
-	else if(wq > WORK_MAX_THRESH)
-		current_state = ABOVE_UPPER;
-	else if(wq > WORK_MIN_THRESH && wq < WORK_MAX_THRESH)
-		current_state = ABOVE_LOWER;
-	else
-		current_state = BELOW_LOWER;
-
-	if(current_state != last) {
-		last = current_state;
-
-		switch(current_state) {
-			case FULL_BUFFER:
-				sem_post(&full_buffer);
-				break;
-			case EMPTY_BUFFER:
-				sem_post(&empty_buffer);
-				break;
-			case ABOVE_UPPER:
-				sem_post(&upper_thresh);
-				break;
-			case ABOVE_LOWER:
-				sem_post(&lower_thresh);
-				break;
-			default:
-				break;
-		}
-		alert_waiting = (last != BELOW_LOWER);
-	}
-	return last;
+/*
+ * This is abstract but stay with me. Let E, L, H, F represent the truth
+ * of a boolean expression and W = |work_queue| such that:
+ *      E   :=  W > 0               (empty)
+ *      L   :=  W >= MIN_THRESH     (at least 50)
+ *      H   :=  W >= MAX_THRESH     (at least 150)
+ *      F   :=  W == BUFFER_MAX     (full)
+ * We make the pair into a binary string so:
+ *      ELHF <=> 1111   and   E'L'H'F' <=> 0000
+ * Now, there are five major states with transitions S_i with i IN {1,..,5}
+ * and each state can be represented by the binary strings:
+ *      S_1 :=  EMPTY_BUFFER    :=  0x8 :=  EL'H'F'     := 1000
+ *      S_2 :=  BELOW_LOWER     :=  0x0 :=  E'L'H'F'    := 0000
+ *      S_3 :=  ABOVE_LOWER     :=  0x4 :=  E'LH'F'     := 0100
+ *      S_4 :=  ABOVE_UPPER     :=  0x6 :=  E'LHF'      := 0110
+ *      S_5 :=  FULL_BUFFER     :=  0x7 :=  E'LHF       := 0111
+ * Since with how the bitwise operations are defined, the four ternaries
+ * will always yield one of the five states. If it changes it can be
+ * reported from the calling thread.
+ */
+bool get_state(int size, uint8_t *last) {
+	uint8_t x = 0x0;
+	x       = (!size)                    ? x | 8 : x & ~(1UL << 3);
+	x       = (size >  WORK_MIN_THRESH)  ? x | 4 : x & ~(1UL << 2);
+	x       = (size >  WORK_MAX_THRESH)  ? x | 2 : x & ~(1UL << 1);
+	x       = (size == WORK_BUFFER_SIZE) ? x | 1 : x & ~(1UL << 0);
+	if(x == *last) return 0;
+	*last = x;
+	return 1;
 }
 
-void semaphore_alert(int pos, char cmd, uint16_t key) {
-	if (sem_trywait(&lower_thresh) == 0) {
-		fprintf(stderr,
-				"Lower Threshold Crossed: %d %c %hu\n",
-				pos, cmd, key);
-		alert_waiting = 0;
-	} else if (sem_trywait(&upper_thresh) == 0) {
-		fprintf(stderr,
-		        "Upper Threshold Crossed: %d %c %hu\n",
-		        pos, cmd, key);
-		alert_waiting = 0;
-	} else if(sem_trywait(&full_buffer) == 0) {
-		fprintf(stderr,
-		        "Buffer Full: %d %c %hu\n",
-		        pos, cmd, key);
-		alert_waiting = 0;
-	} else if(sem_trywait(&empty_buffer) == 0) {
-		fprintf(stderr,
-		        "Buffer Empty: %d %c %hu\n",
-		        pos, cmd, key);
+void report_state_change(void *data, const uint8_t *state) {
+	transform_t *t = (transform_t *) data;
+	switch(*state) {
+		case EMPTY_BUFFER:
+			fprintf(stderr, "Work Queue Empty.\n");
+			break;
+		case BELOW_LOWER:
+			fprintf(stderr,
+					"\nWork Queue Below Lower: Item = %d  Cmd = %c   Key = %hu.\n",
+					get_seq_num(t), get_cmd(t), get_key(t));
+			break;
+		case ABOVE_LOWER:
+			fprintf(stderr,
+			        "\nWork Queue Above Lower: Item = %d  Cmd = %c   Key = %hu.\n",
+			        get_seq_num(t), get_cmd(t), get_key(t));
+			break;
+		case ABOVE_UPPER:
+			fprintf(stderr,
+			        "\nWork Queue Above Upper: Item = %d  Cmd = %c   Key = %hu.\n",
+			        get_seq_num(t), get_cmd(t), get_key(t));
+			break;
+		case FULL_BUFFER:
+			fprintf(stderr,
+			        "\nWork Queue Full: Item = %d  Cmd = %c   Key = %hu.\n",
+			        get_seq_num(t), get_cmd(t), get_key(t));
+			break;
 	}
 }

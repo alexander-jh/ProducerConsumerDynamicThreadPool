@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdatomic.h>
 
 /*
  * Struct to contain all the required values throughout the process
@@ -14,6 +15,11 @@
  * (double) encoded and decoded return from transforms.
  */
 typedef struct transform_struct transform_t;
+
+// Struct for containing the consumer threads. This is necessary
+// to have a shared memory space so the monitor thread can softly
+// shut down threads and ensure the operation completes.
+typedef struct thread_struct thread_t;
 
 // No-arg constructor for transform object.
 transform_t *transform_create(void);

@@ -45,5 +45,12 @@ void *_atomic_queue_pop(atomic_queue_t *q);
 // Thread safe wrapper for dequeue.
 void *atomic_queue_pop(atomic_queue_t *q);
 
-// Thread safe return of the current queue size.
+void *try_queue_pop(atomic_queue_t *q);
+
+// Non-thread safe, reports atomic size variable.
 int atomic_queue_size(atomic_queue_t *q);
+
+// Thread safe return of the top element in the queue.
+void *atomic_queue_top(atomic_queue_t *q);
+
+void delete_element(atomic_queue_t *q, void *ele);
