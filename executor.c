@@ -4,33 +4,33 @@
  * thread group.
  */
 
-#include "atomic_queue.h"
 #include "threads.h"
 
-atomic_queue_t  *input_queue,
-				*work_queue,
-				*output_queue,
-				*run_queue;
+atomic_queue_t          *input_queue,
+                        *output_queue,
+                        *work_queue,
+                        *run_queue;
+atomic_int              produced,
+                        written,
+                        reader_done;
+_Atomic(uint16_t)       state;
+_Atomic(void *)         *current_task;
+time_t                  start,
+                        producer_start,
+                        consumer_start,
+                        end,
+                        producer_end,
+                        consumer_end;
 
-sem_t           producer_done,
-				consumer_done,
-				consumed;
-
-/*
+/**
  * Entry function for main program.
  */
 int main(void) {
     /* Declare counter, timers and thread pools. */
 	int i;
-	time_t      start,
-				producer_start,
-				consumer_start,
-				end,
-				producer_end,
-				consumer_end;
 	pthread_t   reader_thread,
 				writer_thread,
-				monitor_thread,
+                monitor_thread,
 				producer_threads[PRODUCER_THREADS];
 	/* Instantiate queues and other variables. */
 	make_queues();
@@ -46,8 +46,6 @@ int main(void) {
 	for(i = 0; i < PRODUCER_THREADS; ++i)
 		pthread_create(&producer_threads[i], NULL, producer, NULL);
 
-    /* Create monitor thread. */
-	consumer_start = time(NULL);
     pthread_create(&monitor_thread, NULL, monitor, NULL);
 
     /* Create writer thread. */
@@ -55,17 +53,17 @@ int main(void) {
 
     /* Join on completion of reader thread update completion status. */
 	pthread_join(reader_thread, NULL);
+    reader_done = 1;
 
     /* Join on completion of producer threads update completion status. */
 	for(i = 0; i < PRODUCER_THREADS; ++i)
 		pthread_join(producer_threads[i], NULL);
-	sem_post(&producer_done);
 	producer_end = time(NULL);
 
-    /* Join on completion of consumer/monitor threads update completion status. */
+//    printf("Producer Time: %ld:%02ld.\n",
+//           (producer_end - producer_start) / 60, (producer_end - producer_start) % 60);
+
     pthread_join(monitor_thread, NULL);
-	sem_post(&consumer_done);
-	consumer_end = time(NULL);
 
     /* Join on completion of writer threads. */
 	pthread_join(writer_thread, NULL);
@@ -81,25 +79,25 @@ int main(void) {
 			(producer_end - producer_start) / 60, (producer_end - producer_start) % 60,
 			(consumer_end - consumer_start) / 60, (consumer_end - consumer_start) % 60);
 
+    /* Let remaining consumer threads have some time to cancel */
+    sleep(SLEEP_INTERVAL * 10);
 	return 0;
 }
 
 void make_queues() {
 	input_queue     = atomic_queue_create(INPUT_BUFFER_MAX, sizeof(transform_t *));
-	work_queue      = atomic_queue_create(WORK_BUFFER_SIZE, sizeof(transform_t *));
 	output_queue    = atomic_queue_create(OUTPUT_BUFFER_MAX, sizeof(transform_t *));
-    run_queue       = atomic_queue_create(CONSUMER_THREAD_MAX, sizeof(thread_t *));
-	sem_init(&producer_done, 0, 0);
-	sem_init(&consumer_done, 0, 0);
-	sem_init(&consumed, 0, 0);
+	work_queue      = atomic_queue_create(WORK_BUFFER_SIZE, sizeof(transform_t *));
+    run_queue       = atomic_queue_create(BURN_THRESHOLD, sizeof(thread_t *));
+    produced        = 0;
+    written         = 0;
+    state           = EMPTY_BUFFER;
+    current_task    = NULL;
 }
 
 void destroy_queues() {
     atomic_queue_destroy(input_queue);
-    atomic_queue_destroy(work_queue);
     atomic_queue_destroy(output_queue);
+    atomic_queue_destroy(work_queue);
     atomic_queue_destroy(run_queue);
-	sem_destroy(&producer_done);
-	sem_destroy(&consumer_done);
-	sem_destroy(&consumed);
 }

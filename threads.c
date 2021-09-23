@@ -1,5 +1,30 @@
 #include "threads.h"
 
+struct transform_struct {
+    char        cmd;
+    int         queue_pos;
+    double      encoded_ret,
+                decoded_ret;
+    int         work_queue_size;
+    uint16_t    key,
+                seq_num,
+                encoded_key,
+                decoded_key;
+};
+
+transform_t *transform_create() {
+    transform_t *t = (transform_t *) malloc(sizeof(transform_t));
+    if(t == NULL) {
+        perror("Error: Failed to allocate memory for task_t.\n");
+        exit(EXIT_FAILURE);
+    }
+    return t;
+}
+
+void task_destroy(transform_t *t) {
+    free(t);
+}
+
 struct thread_struct {
 	pthread_t       tid;
 	atomic_int      state;
@@ -8,7 +33,7 @@ struct thread_struct {
 thread_t *create_thread(void* (*worker)(void *)) {
 	pthread_attr_t attr;
 	thread_t *t;
-	t = malloc(sizeof(thread_t));
+	t = (thread_t *) malloc(sizeof(thread_t));
 	if(!t) {
 		fprintf(stderr, "Error: Failed to allocate thread.\n");
 		exit(EXIT_FAILURE);
@@ -23,7 +48,6 @@ thread_t *create_thread(void* (*worker)(void *)) {
 
 void thread_delete(thread_t * t) {
 	free(t);
-	t = NULL;
 }
 
 void *reader(void *arg) {
@@ -32,7 +56,7 @@ void *reader(void *arg) {
 	uint16_t key;
 	transform_t *t;
     writer_pos = 0;
-	/* Using STDIN for file input */
+	// Using STDIN for file input
     while(fscanf(stdin, "%c %hu", &cmd, &key)) {
 		if(cmd == 'X') {
             break;
@@ -40,12 +64,13 @@ void *reader(void *arg) {
 		// insertion.
         } else if(key > 0 && (cmd == 'A' || cmd == 'B' || cmd == 'C' ||
                               cmd == 'D' || cmd == 'E')) {
-			t = transform_create();
-			set_cmd(t, cmd);
-			set_key(t, key);
-			set_seq_num(t, ++writer_pos);
-			atomic_queue_push(input_queue, t, false);
-			sem_post(&consumed);
+            t = transform_create();
+            t->cmd = cmd;
+            t->key = key;
+            t->seq_num = writer_pos++;
+			atomic_queue_push(input_queue, t);
+			produced++;
+            written++;
 		}
 	}
 	pthread_exit(arg);
@@ -53,148 +78,142 @@ void *reader(void *arg) {
 
 void *producer(void *arg) {
 	transform_t *task;
-	uint16_t out_val;
-	double retval;
+	int queue_pos;
 	// Exits on completion of reader once the input_queue is empty.
-	while(atomic_queue_size(input_queue)) {
+	while(produced || !reader_done) {
 		// Will automatically terminate on the end of all reader input
-		if(!(task = (transform_t *) try_queue_pop(input_queue)))
-			continue;
-		switch(get_cmd(task)) {
+        if(!(task = (transform_t *) try_queue_pop(input_queue)))
+            continue;
+		switch(task->cmd) {
 			case 'A':
-				out_val = transformA1(get_key(task), &retval);
+                task->encoded_key = transformA1(task->cmd, &task->encoded_ret);
 				break;
 			case 'B':
-				out_val = transformB1(get_key(task), &retval);
+                task->encoded_key = transformB1(task->cmd, &task->encoded_ret);
 				break;
 			case 'C':
-				out_val = transformC1(get_key(task), &retval);
+                task->encoded_key = transformC1(task->cmd, &task->encoded_ret);
 				break;
 			case 'D':
-				out_val = transformD1(get_key(task), &retval);
+                task->encoded_key = transformD1(task->cmd, &task->encoded_ret);
 				break;
 			case 'E':
-				out_val = transformE1(get_key(task), &retval);
+                task->encoded_key = transformE1(task->cmd, &task->encoded_ret);
 				break;
 			default:
-				continue;
+				break;
 		}
-		set_encoded_key(task, out_val);
-		set_encoded_ret(task, retval);
-		atomic_queue_push(work_queue, task, true);
+        task->work_queue_size = atomic_queue_size(work_queue);
+		queue_pos = atomic_queue_push(work_queue, task);
+		task->queue_pos = queue_pos;
+        current_task = (void *) task;
+		produced--;
 	}
 	pthread_exit(arg);
 }
 
 void *monitor(void *arg) {
+    consumer_start = time(NULL);
+    while(produced || !reader_done)
+        if(current_task)
+            monitor_work((transform_t *) current_task);
+    complete_consumption();
+    pthread_exit(arg);
+}
+
+void monitor_work(transform_t *task) {
 	int rq;
+    uint16_t s;
 	thread_t *t;
-	uint8_t state = EMPTY_BUFFER;
-	// Exits on semaphore signal from producer
-	while(sem_trywait(&producer_done) < 0) {
-		// Update current state and report any potential changes
-		if(get_state(atomic_queue_size(work_queue), &state))
-			report_state_change(atomic_queue_top(work_queue), &state);
+    s = state;
+    if(get_state(task->work_queue_size)) {
+        s = state;
+        report_state_change(task, s);
+    }
+    rq = atomic_queue_size(run_queue);
+    switch(s) {
+        case BELOW_LOWER:
+            // Kill threads
+            if(rq && (t = (thread_t *) try_queue_pop(run_queue)))
+                t->state = THREAD_STOPPING;
+            break;
+        case ABOVE_LOWER:
+        case ABOVE_UPPER:
+        case FULL_BUFFER:
+            // Only triggers once for above lower
+            if(((!rq) || (s != ABOVE_LOWER && rq < CONSUMER_THREAD_MAX)) &&
+              ((t = create_thread(consumer)) != NULL))
+                atomic_queue_push(run_queue, t);
+            break;
+        default:
+            break;
+    }
+}
 
-		rq = atomic_queue_size(run_queue);
-
-		switch(state) {
-			case BELOW_LOWER:
-				// Kill threads
-				t = (thread_t *) try_queue_pop(run_queue);
-				if(t) t->state = THREAD_STOPPING;
-				break;
-			case ABOVE_LOWER:
-			case ABOVE_UPPER:
-			case FULL_BUFFER:
-				// Only triggers once for above lower
-				if((!rq) || (state != ABOVE_LOWER && rq < CONSUMER_THREAD_MAX)) {
-					t = create_thread(consumer);
-					atomic_queue_push(run_queue, t, false);
-					sleep(SLEEP_INTERVAL);
-				}
-				break;
-			default:
-				break;
-		}
-	}
-
-	// Spawns max number of threads to consume remaining elements.
-	while(atomic_queue_size(run_queue) < CONSUMER_THREAD_MAX) {
-		atomic_queue_push(run_queue, create_thread(consumer), false);
-		sleep(1);
-	}
-	// Wait for work queue to dry out
-	while(atomic_queue_size(work_queue));
-	// Soft kill each thread
-	while(atomic_queue_size(run_queue)) {
-		t = atomic_queue_pop(run_queue);
-		t->state = THREAD_STOPPING;
-	}
-	// Wait until last element is posted to output
-	while(sem_getvalue(&consumed, &rq) != 0);
-
-	pthread_exit(arg);
+void complete_consumption() {
+    thread_t *t;
+    while(atomic_queue_size(run_queue) < BURN_THRESHOLD - 1 && written)
+        if((t = create_thread(consumer)) != NULL)
+            atomic_queue_push(run_queue, t);
+    while(written)
+        ;
+    while(atomic_queue_size(run_queue))
+        if((t = (thread_t *) try_queue_pop(run_queue)))
+            t->state = THREAD_STOPPING;
+    consumer_end = time(NULL);
 }
 
 void *consumer(void *arg) {
 	transform_t *task;
 	thread_t *self;
-	uint16_t out_val;
-	double retval;
 	// Get reference to thread struct.
 	self = (thread_t *) arg;
 	while(self->state != THREAD_STOPPING) {
-		task = (transform_t *) try_queue_pop(work_queue);
-		// Kills thread after exhaustion of queue
-		if(!task) continue;
-		switch(get_cmd(task)) {
+        if(!(task = (transform_t *) try_queue_pop(work_queue)))
+            continue;
+		switch(task->cmd) {
 			case 'A':
-				out_val = transformA2(get_encoded_key(task), &retval);
+                task->decoded_key = transformA2(task->encoded_key, &task->decoded_ret);
 				break;
 			case 'B':
-				out_val = transformB2(get_encoded_key(task), &retval);
+                task->decoded_key = transformB2(task->encoded_key, &task->decoded_ret);
 				break;
 			case 'C':
-				out_val = transformC2(get_encoded_key(task), &retval);
+                task->decoded_key = transformC2(task->encoded_key, &task->decoded_ret);
 				break;
 			case 'D':
-				out_val = transformD2(get_encoded_key(task), &retval);
+                task->decoded_key = transformD2(task->encoded_key, &task->decoded_ret);
 				break;
 			case 'E':
-				out_val = transformE2(get_encoded_key(task), &retval);
+                task->decoded_key = transformE2(task->encoded_key, &task->decoded_ret);
 				break;
 			default:
-				continue;
+                break;
 		}
-		set_decoded_key(task, out_val);
-		set_decoded_ret(task, retval);
-		atomic_queue_push(output_queue, task, false);
-		sem_trywait(&consumed);
+		atomic_queue_push(output_queue, task);
 	}
 	thread_delete(self);
 	pthread_exit(NULL);
 }
 
 void *writer(void *arg) {
-	int sem_v;
 	transform_t *t;
-    while(1) {
+    while(written) {
 		// Redundant check to verify item still exists in output queue
 		// if it does not will get stuck in a semaphore wait indefinitely.
 	    if((t = (transform_t *) try_queue_pop(output_queue))) {
-		    printf("%d %d %c %hu %lf %hu %lf\n", get_seq_num(t),
-		           get_queue_pos(t), get_cmd(t), get_encoded_key(t),
-		           get_encoded_ret(t), get_decoded_key(t), get_decoded_ret(t));
-		    task_destroy(t);
-	    }
-	    sem_getvalue(&consumer_done, &sem_v);
-		if(sem_v == 1 && !atomic_queue_size(output_queue)) break;
+            fprintf(stdout, "%6d %6d %6c %6hu %23.1lf %6hu %23.1lf\n", t->seq_num,
+                   t->queue_pos, t->cmd, t->encoded_key,
+                   t->encoded_ret, t->decoded_key, t->decoded_ret);
+            task_destroy(t);
+            written--;
+        } else
+            sleep(SLEEP_INTERVAL);
     }
 	pthread_exit(arg);
 }
 
-/*
+/**
  * This is abstract but stay with me. Let E, L, H, F represent the truth
  * of a boolean expression and W = |work_queue| such that:
  *      E   :=  W > 0               (empty)
@@ -214,42 +233,44 @@ void *writer(void *arg) {
  * will always yield one of the five states. If it changes it can be
  * reported from the calling thread.
  */
-bool get_state(int size, uint8_t *last) {
-	uint8_t x = 0x0;
-	x       = (!size)                    ? x | 8 : x & ~(1UL << 3);
-	x       = (size >  WORK_MIN_THRESH)  ? x | 4 : x & ~(1UL << 2);
-	x       = (size >  WORK_MAX_THRESH)  ? x | 2 : x & ~(1UL << 1);
-	x       = (size == WORK_BUFFER_SIZE) ? x | 1 : x & ~(1UL << 0);
-	if(x == *last) return 0;
-	*last = x;
+bool get_state(int size) {
+	uint16_t x = 0x0;
+	x       = (!size)                    ? x | 0x8 : x & ~(0x1 << 0x3);
+	x       = (size >  WORK_MIN_THRESH)  ? x | 0x4 : x & ~(0x1 << 0x2);
+	x       = (size >  WORK_MAX_THRESH)  ? x | 0x2 : x & ~(0x1 << 0x1);
+	x       = (size == WORK_BUFFER_SIZE) ? x | 0x1 : x & ~(0x1 << 0x0);
+	if(x == state) return 0;
+	state = x;
 	return 1;
 }
 
-void report_state_change(void *data, const uint8_t *state) {
+void report_state_change(void *data, uint16_t s) {
 	transform_t *t = (transform_t *) data;
-	switch(*state) {
+	switch(s) {
 		case EMPTY_BUFFER:
 			fprintf(stderr, "Work Queue Empty.\n");
 			break;
 		case BELOW_LOWER:
 			fprintf(stderr,
 					"\nWork Queue Below Lower: Item = %d  Cmd = %c   Key = %hu.\n",
-					get_seq_num(t), get_cmd(t), get_key(t));
+					t->seq_num, t->cmd, t->key);
 			break;
 		case ABOVE_LOWER:
 			fprintf(stderr,
 			        "\nWork Queue Above Lower: Item = %d  Cmd = %c   Key = %hu.\n",
-			        get_seq_num(t), get_cmd(t), get_key(t));
+                    t->seq_num, t->cmd, t->key);
 			break;
 		case ABOVE_UPPER:
 			fprintf(stderr,
 			        "\nWork Queue Above Upper: Item = %d  Cmd = %c   Key = %hu.\n",
-			        get_seq_num(t), get_cmd(t), get_key(t));
+                    t->seq_num, t->cmd, t->key);
 			break;
 		case FULL_BUFFER:
 			fprintf(stderr,
 			        "\nWork Queue Full: Item = %d  Cmd = %c   Key = %hu.\n",
-			        get_seq_num(t), get_cmd(t), get_key(t));
+                    t->seq_num, t->cmd, t->key);
 			break;
+        default:
+            break;
 	}
 }

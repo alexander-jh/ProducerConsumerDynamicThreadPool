@@ -1,11 +1,11 @@
 # Source and lib files
 PROGRAM = lab1_hoke62_hoke62
-FILES.c = executor.c threads.c atomic_queue.c transform.c
-FILES.h = threads.h atomic_queue.h transform.h transformMat.h
+FILES.c = executor.c threads.c atomic_queue.c
+FILES.h = threads.h atomic_queue.h
 FILES.o = ${FILES.c:.c=.o} transformMat.o
 TEST	= input/PCS_data_t00100
 TEST1	= input/PCS_data_test
-TEST2	= input/PCS_data_t01000
+TEST2	= input/PCS_data_t00500
 
 # Compiler options
 CC 		= gcc
@@ -16,11 +16,10 @@ PFLAGS	= -pthread
 FFLAG1	= -no-pie
 WFLAG1  = -Wall
 WFLAG2  = -Wextra
-WFLAG3  = -Werror
-WFLAG4  = -Wstrict-prototypes
-WFLAG5  = -Wmissing-prototypes
+WFLAG3  = -Wstrict-prototypes
+WFLAG4  = -Wmissing-prototypes
 FFLAGS	= ${FFLAG1}
-WFLAGS	= ${WFLAG1} ${WFLAG2} ${WFLAG3} ${WFLAG4} ${WFLAG5}
+WFLAGS	= ${WFLAG1} ${WFLAG2} ${WFLAG3} ${WFLAG4}
 CFLAGS	= ${FFLAGS} ${SFLAGS} ${GFLAGS} ${OFLAGS} ${PFLAGS} ${WFLAGS}
 
 all: ${PROGRAM}
@@ -29,7 +28,6 @@ ${PROGRAM}: ${FILES.o}
 	${CC} -o $@ ${CFLAGS} ${FILES.o}
 
 executor.o:		${FILES.h}
-transform.o:	${FILES.h}
 atomic_queue.o:	${FILES.h}
 threads.o:		${FILES.h}
 
@@ -43,4 +41,4 @@ big-test: ${PROGRAM} clean
 	./lab1_hoke62_hoke62 <${TEST2} 2> error.log
 
 clean:
-	rm -rf executor.o threads.o atomic_queue.o transform.o
+	rm -rf executor.o threads.o atomic_queue.o multi_queue.o
