@@ -1,1 +1,0 @@
-/usr/bin/cc -pthread -g CMakeFiles/Project1.dir/executor.c.o CMakeFiles/Project1.dir/threads.c.o CMakeFiles/Project1.dir/atomic_queue.c.o CMakeFiles/Project1.dir/transform.c.o ../transformMat.o -o Project1 

@@ -1,3 +1,0 @@
-/home/ajw/Dropbox/OSU/CSE5541 - Parallel Computing/Project1/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-/home/ajw/Dropbox/OSU/CSE5541 - Parallel Computing/Project1/cmake-build-debug/CMakeFiles/edit_cache.dir
-/home/ajw/Dropbox/OSU/CSE5541 - Parallel Computing/Project1/cmake-build-debug/CMakeFiles/Project1.dir
