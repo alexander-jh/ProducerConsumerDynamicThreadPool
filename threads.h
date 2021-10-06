@@ -8,6 +8,7 @@
 #include <time.h>
 
 #include "atomic_queue.h"
+#include "min_heap.h"
 
 #define PRODUCER_THREADS        4
 #define CONSUMER_THREAD_MAX     10
@@ -48,9 +49,9 @@ typedef struct transform_struct transform_t;
  * Globally declared queues.
  */
 extern atomic_queue_t           *input_queue,
-                                *output_queue,
                                 *work_queue,
-                                *run_queue;
+                                *run_queue,
+                                *output_queue;
 extern atomic_int               produced,
                                 written,
                                 reader_done;

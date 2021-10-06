@@ -1,7 +1,7 @@
 # Source and lib files
 PROGRAM = lab1_hoke62_hoke62
-FILES.c = executor.c threads.c atomic_queue.c
-FILES.h = threads.h atomic_queue.h
+FILES.c = executor.c threads.c atomic_queue.c min_heap.c
+FILES.h = threads.h atomic_queue.h min_heap.h
 FILES.o = ${FILES.c:.c=.o} transformMat.o
 TEST	= input/PCS_data_t00100
 TEST1	= input/PCS_data_test
@@ -29,6 +29,7 @@ ${PROGRAM}: ${FILES.o}
 
 executor.o:		${FILES.h}
 atomic_queue.o:	${FILES.h}
+min_heap.o:	${FILES.h}
 threads.o:		${FILES.h}
 
 test: ${PROGRAM} clean
@@ -41,4 +42,4 @@ big-test: ${PROGRAM} clean
 	./lab1_hoke62_hoke62 <${TEST2} 2> error.log
 
 clean:
-	rm -rf executor.o threads.o atomic_queue.o multi_queue.o
+	rm -rf executor.o threads.o atomic_queue.o min_heap.o

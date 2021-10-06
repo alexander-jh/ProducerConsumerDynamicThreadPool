@@ -7,9 +7,9 @@
 #include "threads.h"
 
 atomic_queue_t          *input_queue,
-                        *output_queue,
                         *work_queue,
-                        *run_queue;
+                        *run_queue,
+                        *output_queue;
 atomic_int              produced,
                         written,
                         reader_done;

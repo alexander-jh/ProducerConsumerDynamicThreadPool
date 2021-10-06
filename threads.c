@@ -67,7 +67,7 @@ void *reader(void *arg) {
             t = transform_create();
             t->cmd = cmd;
             t->key = key;
-            t->seq_num = writer_pos++;
+            t->seq_num = ++writer_pos;
 			atomic_queue_push(input_queue, t);
 			produced++;
             written++;
@@ -197,19 +197,29 @@ void *consumer(void *arg) {
 }
 
 void *writer(void *arg) {
+    heap_t *h;
 	transform_t *t;
+    int32_t exp_seq = 1;
+    h = create_heap();
     while(written) {
-		// Redundant check to verify item still exists in output queue
-		// if it does not will get stuck in a semaphore wait indefinitely.
-	    if((t = (transform_t *) try_queue_pop(output_queue))) {
-            fprintf(stdout, "%6d %6d %6c %6hu %23.1lf %6hu %23.1lf\n", t->seq_num,
-                   t->queue_pos, t->cmd, t->encoded_key,
-                   t->encoded_ret, t->decoded_key, t->decoded_ret);
-            task_destroy(t);
-            written--;
+
+        if((t = (transform_t *) atomic_queue_pop(output_queue))) {
+            insert(h, t, t->seq_num);
+            //printf("inserted: %hu   min: %hu\n", t->seq_num, minimum(h));
         } else
             sleep(SLEEP_INTERVAL);
+
+        if(minimum(h) == exp_seq) {
+            t = (transform_t *) extract_min(h);
+            fprintf(stdout, "%6d %6d %6c %6hu %23.1lf %6hu %23.1lf\n", t->seq_num,
+                    t->queue_pos, t->cmd, t->encoded_key,
+                    t->encoded_ret, t->decoded_key, t->decoded_ret);
+            task_destroy(t);
+            written--;
+            exp_seq++;
+        }
     }
+    destroy_heap(h);
 	pthread_exit(arg);
 }
 
