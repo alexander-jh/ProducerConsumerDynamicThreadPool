@@ -80,7 +80,7 @@ void *producer(void *arg) {
 	transform_t *task;
 	int queue_pos;
 	// Exits on completion of reader once the input_queue is empty.
-	while(produced || !reader_done) {
+	while(produced > 0 || !reader_done) {
 		// Will automatically terminate on the end of all reader input
         if(!(task = (transform_t *) try_queue_pop(input_queue)))
             continue;
@@ -114,7 +114,7 @@ void *producer(void *arg) {
 
 void *monitor(void *arg) {
     consumer_start = time(NULL);
-    while(produced || !reader_done)
+    while(produced > 0 || !reader_done)
         if(current_task)
             monitor_work((transform_t *) current_task);
     complete_consumption();
@@ -203,10 +203,9 @@ void *writer(void *arg) {
     h = create_heap();
     while(written) {
 
-        if((t = (transform_t *) atomic_queue_pop(output_queue))) {
+        if((t = (transform_t *) try_queue_pop(output_queue)))
             insert(h, t, t->seq_num);
-            //printf("inserted: %hu   min: %hu\n", t->seq_num, minimum(h));
-        } else
+        else
             sleep(SLEEP_INTERVAL);
 
         if(minimum(h) == exp_seq) {
