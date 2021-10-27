@@ -192,7 +192,7 @@ void complete_consumption() {
     while(atomic_queue_size(run_queue) < CONSUMER_THREAD_MAX - 1)
         if((t = thread_create(consumer))) atomic_queue_push(run_queue, t);
     while(atomic_queue_size(work_queue) || atomic_queue_size(output_queue))
-        ;
+        sleep(SLEEP_INTERVAL);
     while(atomic_queue_size(run_queue))
         if((t = (thread_t *) try_queue_pop(run_queue))) thread_stop(t);
     consumer_end = time(NULL);
