@@ -71,7 +71,7 @@ void make_queues() {
 	input_queue     = atomic_queue_create(INPUT_BUFFER_MAX, sizeof(transform_t *));
 	output_queue    = atomic_queue_create(OUTPUT_BUFFER_MAX, sizeof(transform_t *));
 	work_queue      = atomic_queue_create(WORK_BUFFER_SIZE, sizeof(transform_t *));
-    run_queue       = atomic_queue_create(PRODUCER_THREADS, sizeof(thread_t *));
+    run_queue       = atomic_queue_create(CONSUMER_THREAD_MAX, sizeof(thread_t *));
     reader_task     = task_create();
     producer_task     = task_create();
     consumer_task     = task_create();
@@ -190,7 +190,7 @@ void complete_consumption() {
     thread_t *t;
     while(atomic_queue_size(run_queue) < CONSUMER_THREAD_MAX - 1)
         if((t = thread_create(consumer))) atomic_queue_push(run_queue, t);
-    while(atomic_queue_size(work_queue))
+    while(atomic_queue_size(work_queue) || atomic_queue_size(output_queue))
         ;
     while(atomic_queue_size(run_queue))
         if((t = (thread_t *) try_queue_pop(run_queue))) thread_stop(t);
@@ -234,7 +234,7 @@ void *consumer(void *arg) {
         }
     }
     // Wait to ensure monitor has a chance to join
-    sleep(SLEEP_INTERVAL);
+    sleep(2 * SLEEP_INTERVAL);
     pthread_exit(NULL);
 }
 

@@ -28,7 +28,7 @@ void thread_stop(thread_t *t) {
     pthread_mutex_lock(&t->mutex);
     t->state = false;
     pthread_mutex_unlock(&t->mutex);
-    pthread_join(t->tid, NULL);
+    if(t->tid) pthread_join(t->tid, NULL);
     thread_delete(t);
 }
 
