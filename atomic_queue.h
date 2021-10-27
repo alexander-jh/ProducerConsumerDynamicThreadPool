@@ -52,8 +52,10 @@ int atomic_queue_push(atomic_queue_t *, void *);
  * @param  - reference to a queue
  * @return - reference to removed element
  */
-void *_atomic_queue_pop(atomic_queue_t *q);
-void *atomic_queue_pop(atomic_queue_t *q);
+void *_atomic_queue_pop(atomic_queue_t *);
+void *atomic_queue_pop(atomic_queue_t *);
+
+void *atomic_queue_top(atomic_queue_t *);
 
 /**
  * Thread safe implementation to remove the eldest element
@@ -62,7 +64,7 @@ void *atomic_queue_pop(atomic_queue_t *q);
  * @param  - reference to a queue
  * @return - reference to removed element
  */
-void *try_queue_pop(atomic_queue_t *q);
+void *try_queue_pop(atomic_queue_t *);
 
 /**
  * Returns size of queue. Guaranteed atomic but is non-locking
@@ -70,4 +72,6 @@ void *try_queue_pop(atomic_queue_t *q);
  * @param  - reference to a queue
  * @return - returns the size of the queue
  */
-int atomic_queue_size(atomic_queue_t *q);
+int atomic_queue_size(atomic_queue_t *);
+
+int atomic_queue_pos(atomic_queue_t *);

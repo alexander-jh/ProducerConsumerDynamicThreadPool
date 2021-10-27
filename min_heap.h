@@ -29,3 +29,5 @@ void *extract_min(heap_t *);
 void decrease_key(heap_t *, int32_t);
 
 void insert(heap_t *, void *, uint16_t);
+
+int heap_size(heap_t *);

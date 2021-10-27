@@ -3,21 +3,22 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <signal.h>
-#include <stdatomic.h>
 #include <unistd.h>
 #include <time.h>
 
 #include "atomic_queue.h"
+#include "atomic_task.h"
+#include "atomic_thread.h"
+#include "atomic_transform.h"
 #include "min_heap.h"
 
 #define PRODUCER_THREADS        4
-#define CONSUMER_THREAD_MAX     10
+#define CONSUMER_THREAD_MAX     6
 #define INPUT_BUFFER_MAX        200
 #define WORK_BUFFER_SIZE        200
+#define OUTPUT_BUFFER_MAX       200
 #define WORK_MAX_THRESH         150
 #define WORK_MIN_THRESH         50
-#define OUTPUT_BUFFER_MAX       200
-#define BURN_THRESHOLD          20
 
 #define EMPTY_BUFFER            0x8
 #define BELOW_LOWER             0x0
@@ -25,69 +26,24 @@
 #define ABOVE_UPPER             0x6
 #define FULL_BUFFER             0x7
 
-#define THREAD_STOPPING         0x1
-#define THREAD_RUNNING          0x2
-
 #define SLEEP_INTERVAL          1
-
-/**
- * Struct for containing the consumer threads. This is necessary
- * to have a shared memory space so the monitor thread can softly
- * shut down threads and ensure the operation completes.
- */
-typedef struct thread_struct thread_t;
-
-/**
- * Struct to contain all the required values throughout the process
- * (char) cmd, (uint16_t) key, (int) sequence_number,
- * (int) work_queue_position, (uint16_t) encoded and decoded key,
- * (double) encoded and decoded return from transforms.
- */
-typedef struct transform_struct transform_t;
 
 /**
  * Globally declared queues.
  */
-extern atomic_queue_t           *input_queue,
-                                *work_queue,
-                                *run_queue,
-                                *output_queue;
-extern atomic_int               produced,
-                                written,
-                                reader_done;
-extern _Atomic(uint16_t)        state;
-extern _Atomic(void *)          *current_task;
-extern time_t                   start,
-                                producer_start,
-                                consumer_start,
-                                end,
-                                producer_end,
-                                consumer_end;
-
-/**
- * No-arg constructor for transform object.
- */
-transform_t *transform_create(void);
-
-/**
- * Destructor for the transform struct.
- * @param   - reference to a transform struct to free
- */
-void task_destroy(transform_t *);
-
-/**
- * Default constructor for the thread object. Requires a reference
- * to the function to execute for p_thread instantiation.
- * @param   - reference to thread safe function
- * @return  - pthread instantiated to referenced function
- */
-thread_t *create_thread(void* (*)(void *));
-
-/**
- * Default destructor for the thread struct.
- * @param   - reference to thread struct
- */
-void thread_delete(thread_t *);
+atomic_queue_t          *input_queue,
+                        *work_queue,
+                        *run_queue,
+                        *output_queue;
+task_t                  *reader_task,
+                        *producer_task,
+                        *consumer_task;
+time_t                  start,
+                        producer_start,
+                        consumer_start,
+                        end,
+                        producer_end,
+                        consumer_end;
 
 /**
  * Implemented in executor.c. Acts as a constructor for all queues
@@ -136,11 +92,20 @@ void *producer(void *);
  * @param   - reference to transform struct
  */
 void *monitor(void *);
-void monitor_work(transform_t *);
 
 /**
- * Consumes remaining work elements following the termination of producer
- * threads.
+ * Helper function for consumer master thread. Checks the state of the
+ * top item on the work queue based upon size. Based on current state
+ * decides appropriate action (i.e. create consumer or kill consumer).
+ * @param   - reference to top element of queue
+ * @param   - reference to last observed state
+ */
+void monitor_work(transform_t *, uint16_t *);
+
+/**
+ * Upon completion of producer workload shifts to spin up the maximum
+ * number of consumer threads to empty the work queue. Waits until
+ * all consumers are finished prior to exiting.
  */
 void complete_consumption(void);
 
@@ -161,7 +126,7 @@ void *consumer(void *);
  * @param   - not required for default action
  * @return  - returns trivial pthread args
  */
-void *writer(void *arg);
+void *writer(void *);
 
 /**
  * Returns if the state of reporting updated. If it did, swaps the current
@@ -169,14 +134,14 @@ void *writer(void *arg);
  * @param   - size of work queue
  * @return  - boolean signifying if the state changed
  */
-bool get_state(int);
+bool get_state(int, uint16_t *);
 
 /**
  * If a change in state occurred, reports the relevant details to stderr.
  * @param   - reference to transform struct
  * @param   - new state of the process
  */
-void report_state_change(void *, uint16_t);
+void report_state_change(transform_t *, uint16_t);
 
 /**
  * Reference to transform operations in attached object file transformMat.o.

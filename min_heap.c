@@ -12,6 +12,10 @@ struct data_struct {
     void            *data;
 };
 
+int heap_size(heap_t *h) {
+    return h->size;
+}
+
 heap_t *create_heap() {
     uint32_t i;
     heap_t *h   = (heap_t *) malloc(sizeof(heap_t)) MPANIC(h);

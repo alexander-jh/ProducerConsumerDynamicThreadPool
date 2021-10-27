@@ -5,10 +5,10 @@ struct atomic_queue_struct {
     pthread_mutex_t     mutex;
     int                 capacity,
                         back,
-                        front;
+                        front,
+                        size;
     sem_t               empty,
                         full;
-    atomic_int          size;
 };
 
 atomic_queue_t *atomic_queue_create(int capacity, size_t data_p) {
@@ -86,6 +86,26 @@ void *try_queue_pop(atomic_queue_t *q) {
     return data;
 }
 
+void *atomic_queue_top(atomic_queue_t *q) {
+    void *data;
+    pthread_mutex_lock(&q->mutex);
+    data = (q->size > 0) ? q->data[q->front] : NULL;
+    pthread_mutex_unlock(&q->mutex);
+    return data;
+}
+
 int atomic_queue_size(atomic_queue_t *q) {
-    return q->size;
+    int size;
+    pthread_mutex_lock(&q->mutex);
+    size = q->size;
+    pthread_mutex_unlock(&q->mutex);
+    return size;
+}
+
+int atomic_queue_pos(atomic_queue_t *q) {
+    int i;
+    pthread_mutex_lock(&q->mutex);
+    i = q->back;
+    pthread_mutex_unlock(&q->mutex);
+    return i;
 }

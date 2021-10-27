@@ -1,0 +1,22 @@
+#!/bin/bash
+#SBATCH --time=1:45:00
+#SBATCH --ntasks=28 --nodes=1
+#SBATCH --job-name=lab1_test_hoke
+#SBATCH --account=PAS2065
+
+export PGM=lab1_hoke62_hoke62
+
+echo job started at `date`
+echo on compute node `cat $PBS_NODEFILE`
+
+cd $SLURM_SUBMIT_DIR
+cp data/PCS_data_t00100 $TMPDIR
+cd $TMPDIR
+
+echo job started at `date` >>current.out
+time $SLURM_SUBMIT_DIR/${PGM} <PCS_data_t00100  >>current.out 2>&1
+echo job ended at `date` >>current.out
+
+export SAVEDIR=${SLURM_SUBMIT_DIR}'/data_test.'${SLURM_JOBID}
+mkdir ${SAVEDIR}
+mv current.out ${SAVEDIR}
