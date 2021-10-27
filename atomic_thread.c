@@ -20,14 +20,16 @@ thread_t *thread_create(void* (*worker)(void *)) {
 }
 
 void thread_delete(thread_t * t) {
+    pthread_mutex_destroy(&t->mutex);
 	free(t);
 }
 
-void thread_stop(thread_t * t) {
+void thread_stop(thread_t *t) {
     pthread_mutex_lock(&t->mutex);
     t->state = false;
     pthread_mutex_unlock(&t->mutex);
     pthread_join(t->tid, NULL);
+    thread_delete(t);
 }
 
 bool thread_running(thread_t *t) {

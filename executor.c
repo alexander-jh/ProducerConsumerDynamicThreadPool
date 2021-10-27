@@ -233,7 +233,8 @@ void *consumer(void *arg) {
             atomic_queue_push(output_queue, task);
         }
     }
-    thread_delete(self);
+    // Wait to ensure monitor has a chance to join
+    sleep(SLEEP_INTERVAL);
     pthread_exit(NULL);
 }
 
