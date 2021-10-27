@@ -92,20 +92,21 @@ void *reader(void *arg) {
     char cmd;
     uint16_t key;
     transform_t *t;
-    writer_pos = 0;
+    writer_pos = 1;
     // Using STDIN for file input
     while(fscanf(stdin, "%c %hu", &cmd, &key)) {
         if(cmd == 'X') {
             break;
             // If key is valid and cmd is valid create transform struct for
             // insertion.
-        } else if(key > 0 && (cmd == 'A' || cmd == 'B' || cmd == 'C' ||
-                              cmd == 'D' || cmd == 'E')) {
+        } else if(cmd == 'A' || cmd == 'B' || cmd == 'C' ||
+                              cmd == 'D' || cmd == 'E') {
             t = transform_create();
             transform_set_cmd(t, cmd);
             transform_set_key(t, key);
-            transform_set_seq(t, ++writer_pos);
+            transform_set_seq(t, writer_pos);
             atomic_queue_push(input_queue, t);
+            writer_pos++;
         }
     }
     pthread_exit(arg);
