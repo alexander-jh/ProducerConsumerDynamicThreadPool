@@ -19,6 +19,7 @@
 #define OUTPUT_BUFFER_MAX       200
 #define WORK_MAX_THRESH         150
 #define WORK_MIN_THRESH         50
+#define MAX_LINE                15
 
 #define EMPTY_BUFFER            0x8
 #define BELOW_LOWER             0x0

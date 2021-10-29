@@ -7,6 +7,7 @@ DEL.o	= ${FILES.c:.c=.o}
 TEST	= input/PCS_data_t00100
 TEST1	= input/PCS_data_test
 TEST2	= input/PCS_data_t00500
+TEST3	= input/PCS_data_test1
 
 # Compiler options
 CC 		= gcc
@@ -43,6 +44,9 @@ min-test: clean ${PROGRAM} clean
 
 big-test: clean ${PROGRAM} clean
 	./lab1_hoke62_hoke62 <${TEST2} 2> error.log
+
+max-test: clean ${PROGRAM} clean
+	./lab1_hoke62_hoke62 <${TEST3} 2> error.log
 
 clean:
 	rm -rf ${DEL.o}

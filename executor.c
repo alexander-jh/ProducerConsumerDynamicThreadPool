@@ -49,6 +49,8 @@ int main(void) {
 //           (producer_end - producer_start) / 60, (producer_end - producer_start) % 60);
 
     pthread_join(monitor_thread, NULL);
+    /* Wait time to ensure the output queue is updated */
+    sleep(SLEEP_INTERVAL * 5);
     task_set_complete(consumer_task);
 
     /* Join on completion of writer threads. */
@@ -89,18 +91,20 @@ void destroy_queues() {
 
 void *reader(void *arg) {
     int writer_pos;
-    char cmd;
+    char buffer[MAX_LINE], cmd;
     uint16_t key;
     transform_t *t;
     writer_pos = 1;
     // Using STDIN for file input
-    while(fscanf(stdin, "%c %hu", &cmd, &key)) {
+    while(fscanf(stdin, "%c %s\n", &cmd, buffer)) {
+        key = (uint16_t) strtoul(buffer, NULL, 10);
         if(cmd == 'X') {
             break;
             // If key is valid and cmd is valid create transform struct for
             // insertion.
         } else if(cmd == 'A' || cmd == 'B' || cmd == 'C' ||
-                              cmd == 'D' || cmd == 'E') {
+                   cmd == 'D' || cmd == 'E') {
+            //printf("%d - %c - %hu\n", writer_pos, cmd, key);
             t = transform_create();
             transform_set_cmd(t, cmd);
             transform_set_key(t, key);
@@ -141,12 +145,10 @@ void *producer(void *arg) {
             default:
                 break;
         }
-        if(encoded_key) {
-            transform_set_ekey(task, encoded_key);
-            transform_set_eret(task, retval);
-            transform_set_pos(task, atomic_queue_pos(work_queue));
-            atomic_queue_push(work_queue, task);
-        }
+        transform_set_ekey(task, encoded_key);
+        transform_set_eret(task, retval);
+        transform_set_pos(task, atomic_queue_pos(work_queue));
+        atomic_queue_push(work_queue, task);
     }
     pthread_exit(arg);
 }
@@ -194,7 +196,8 @@ void complete_consumption() {
     while(atomic_queue_size(work_queue) || atomic_queue_size(output_queue))
         sleep(SLEEP_INTERVAL);
     while(atomic_queue_size(run_queue))
-        if((t = (thread_t *) try_queue_pop(run_queue))) thread_stop(t);
+        if(!atomic_queue_size(output_queue) && (t = (thread_t *) try_queue_pop(run_queue)))
+            thread_stop(t);
     consumer_end = time(NULL);
 }
 
@@ -228,11 +231,9 @@ void *consumer(void *arg) {
             default:
                 break;
         }
-        if(decoded_key) {
-            transform_set_dkey(task, decoded_key);
-            transform_set_dret(task, ret);
-            atomic_queue_push(output_queue, task);
-        }
+        transform_set_dkey(task, decoded_key);
+        transform_set_dret(task, ret);
+        atomic_queue_push(output_queue, task);
     }
     // Wait to ensure monitor has a chance to join
     sleep(2 * SLEEP_INTERVAL);
@@ -245,7 +246,7 @@ void *writer(void *arg) {
     int32_t exp_seq = 1;
     h = create_heap();
     // Wait for reader to process first item
-    while(!task_is_complete(consumer_task) || atomic_queue_size(output_queue) > 0 || heap_size(h) > 0) {
+    while(!task_is_complete(consumer_task) || atomic_queue_size(output_queue) || heap_size(h)) {
         if((t = (transform_t *) try_queue_pop(output_queue)))
             insert(h, t, transform_get_seq(t));
         else if(minimum(h) == exp_seq) {
